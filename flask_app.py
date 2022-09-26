@@ -1,3 +1,4 @@
+from flask_ngrok2 import run_with_ngrok
 from flask import Flask, request, jsonify
 
 
@@ -10,7 +11,7 @@ import glob
 
 sample_path = "./static/samples"
 os.makedirs(sample_path, exist_ok=True)
-base_count = max([0]+[int(s[-9:-4]) for s in glob.glob(sample_path+"/*.png")])+1
+base_count = max([0]+[int(s[-9:-4]) for s in glob.glob(sample_path+"/[0-9][0-9][0-9][0-9][0-9].png")])+1
 
 hf_token=os.environ["HF_TOKEN"]
 
@@ -46,7 +47,7 @@ import gradio as gr
 from transformers import DPTFeatureExtractor, DPTForDepthEstimation
 import torch
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 #@title
 import gradio
 
@@ -80,7 +81,9 @@ def process_image(image):
 
 whisper_model = whisper.load_model("base")
 
+#flask server
 app = Flask(__name__)
+run_with_ngrok(app, auth_token=os.environ["NGROK_TOKEN"])
 
 @app.route("/")
 def hello_world():
@@ -106,10 +109,17 @@ def putAudio():
         img.save(imgPath)
 
     depth_map=process_image(img)
+    depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius = 2))
+
+
     depthPath=os.path.join(sample_path, "%05d_d.png"%base_count)
     depth_map.save(depthPath)
 
     return jsonify([result["text"],imgPath,depthPath])
+
+
+if __name__ == '__main__':
+   app.run()
 
 
     
