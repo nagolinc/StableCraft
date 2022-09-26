@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>three.js vr - cubes</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <link type="text/css" rel="stylesheet" href="main.css">
+</head>
+
+<body>
+
+    <div id="info">
+        <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> vr - interactive cubes
+    </div>
+
+    <!-- Import maps polyfill -->
+    <!-- Remove this when import maps will be widely supported -->
+    <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+
+    <script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+    <script type="module">
+
+        import * as THREE from 'three';
+
+        import { BoxLineGeometry } from 'three/addons/geometries/BoxLineGeometry.js';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
+        const clock = new THREE.Clock();
+
+        let container;
+        let camera, scene, raycaster, renderer;
+
+        let room;
+
+        let controller, controllerGrip;
+        let INTERSECTED;
+        const tempMatrix = new THREE.Matrix4();
+
+
+        //game pad stuff
+        const prevGamePads = new Map();
+        let mode = "NONE"
+
+
+
+        init();
+        animate();
+
+        function init() {
+
+            container = document.createElement('div');
+            document.body.appendChild(container);
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x505050);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 10);
+            camera.position.set(0, 1.6, 3);
+            scene.add(camera);
+
+            room = new THREE.LineSegments(
+                new BoxLineGeometry(6, 6, 6, 10, 10, 10).translate(0, 3, 0),
+                new THREE.LineBasicMaterial({ color: 0x808080 })
+            );
+            scene.add(room);
+
+            scene.add(new THREE.HemisphereLight(0x606060, 0x404040));
+
+            const light = new THREE.DirectionalLight(0xffffff);
+            light.position.set(1, 1, 1).normalize();
+            scene.add(light);
+
+            const geometry = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+
+            for (let i = 0; i < 200; i++) {
+
+                const object = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }));
+
+                object.position.x = Math.random() * 4 - 2;
+                object.position.y = Math.random() * 4;
+                object.position.z = Math.random() * 4 - 2;
+
+                object.rotation.x = Math.random() * 2 * Math.PI;
+                object.rotation.y = Math.random() * 2 * Math.PI;
+                object.rotation.z = Math.random() * 2 * Math.PI;
+
+                object.scale.x = Math.random() + 0.5;
+                object.scale.y = Math.random() + 0.5;
+                object.scale.z = Math.random() + 0.5;
+
+                object.userData.velocity = new THREE.Vector3();
+                object.userData.velocity.x = Math.random() * 0.01 - 0.005;
+                object.userData.velocity.y = Math.random() * 0.01 - 0.005;
+                object.userData.velocity.z = Math.random() * 0.01 - 0.005;
+
+                room.add(object);
+
+            }
+
+            raycaster = new THREE.Raycaster();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.xr.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            //
+
+            function onSelectStart() {
+
+                this.userData.isSelecting = true;
+
+            }
+
+            function onSelectEnd() {
+
+                this.userData.isSelecting = false;
+
+            }
+
+            controller = renderer.xr.getController(0);
+            controller.addEventListener('selectstart', onSelectStart);
+            controller.addEventListener('selectend', onSelectEnd);
+            controller.addEventListener('connected', function (event) {
+
+                this.add(buildController(event.data));
+
+            });
+            controller.addEventListener('disconnected', function () {
+
+                this.remove(this.children[0]);
+
+            });
+            scene.add(controller);
+
+            const controllerModelFactory = new XRControllerModelFactory();
+
+            controllerGrip = renderer.xr.getControllerGrip(0);
+            controllerGrip.add(controllerModelFactory.createControllerModel(controllerGrip));
+            scene.add(controllerGrip);
+
+            window.addEventListener('resize', onWindowResize);
+
+
+            document.body.appendChild(VRButton.createButton(renderer));
+
+        }
+
+        function buildController(data) {
+
+            let geometry, material;
+
+            switch (data.targetRayMode) {
+
+                case 'tracked-pointer':
+
+                    geometry = new THREE.BufferGeometry();
+                    geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, - 1], 3));
+                    geometry.setAttribute('color', new THREE.Float32BufferAttribute([0.5, 0.5, 0.5, 0, 0, 0], 3));
+
+                    material = new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending });
+
+                    return new THREE.Line(geometry, material);
+
+                case 'gaze':
+
+                    geometry = new THREE.RingGeometry(0.02, 0.04, 32).translate(0, 0, - 1);
+                    material = new THREE.MeshBasicMaterial({ opacity: 0.5, transparent: true });
+                    return new THREE.Mesh(geometry, material);
+
+            }
+
+        }
+
+        function onWindowResize() {
+
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+        }
+
+        //
+
+        function animate() {
+
+            renderer.setAnimationLoop(render);
+
+        }
+
+        function render() {
+
+            const delta = clock.getDelta() * 60;
+
+            if (controller.userData.isSelecting === true) {
+
+                const cube = room.children[0];
+                room.remove(cube);
+
+                cube.position.copy(controller.position);
+                cube.userData.velocity.x = (Math.random() - 0.5) * 0.02 * delta;
+                cube.userData.velocity.y = (Math.random() - 0.5) * 0.02 * delta;
+                cube.userData.velocity.z = (Math.random() * 0.01 - 0.05) * delta;
+                cube.userData.velocity.applyQuaternion(controller.quaternion);
+                room.add(cube);
+
+            }
+
+            // find intersections
+
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+
+            const intersects = raycaster.intersectObjects(room.children, false);
+
+            if (intersects.length > 0) {
+
+                if (INTERSECTED != intersects[0].object) {
+
+                    if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+
+                    INTERSECTED = intersects[0].object;
+                    INTERSECTED.currentHex = INTERSECTED.material.emissive.getHex();
+                    INTERSECTED.material.emissive.setHex(0xff0000);
+
+                }
+
+            } else {
+
+                if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+
+                INTERSECTED = undefined;
+
+            }
+
+            // Keep cubes inside room
+
+            for (let i = 0; i < room.children.length; i++) {
+
+                const cube = room.children[i];
+
+                cube.userData.velocity.multiplyScalar(1 - (0.001 * delta));
+
+                cube.position.add(cube.userData.velocity);
+
+                if (cube.position.x < - 3 || cube.position.x > 3) {
+
+                    cube.position.x = THREE.MathUtils.clamp(cube.position.x, - 3, 3);
+                    cube.userData.velocity.x = - cube.userData.velocity.x;
+
+                }
+
+                if (cube.position.y < 0 || cube.position.y > 6) {
+
+                    cube.position.y = THREE.MathUtils.clamp(cube.position.y, 0, 6);
+                    cube.userData.velocity.y = - cube.userData.velocity.y;
+
+                }
+
+                if (cube.position.z < - 3 || cube.position.z > 3) {
+
+                    cube.position.z = THREE.MathUtils.clamp(cube.position.z, - 3, 3);
+                    cube.userData.velocity.z = - cube.userData.velocity.z;
+
+                }
+
+                cube.rotation.x += cube.userData.velocity.x * 2 * delta;
+                cube.rotation.y += cube.userData.velocity.y * 2 * delta;
+                cube.rotation.z += cube.userData.velocity.z * 2 * delta;
+
+            }
+
+            renderer.render(scene, camera);
+
+            //poll for controllers
+            dollyMove();
+
+        }
+
+
+
+        function dollyMove() {
+            var handedness = "unknown";
+
+            //determine if we are in an xr session
+            const session = renderer.xr.getSession();
+            let i = 0;
+
+            if (session) {
+
+                //a check to prevent console errors if only one input source
+                if (isIterable(session.inputSources)) {
+                    for (const source of session.inputSources) {
+                        if (source && source.handedness) {
+                            handedness = source.handedness; //left or right controllers
+                        }
+                        if (!source.gamepad) continue;
+                        const controller = renderer.xr.getController(i++);
+                        const old = prevGamePads.get(source);
+                        const data = {
+                            handedness: handedness,
+                            buttons: source.gamepad.buttons.map((b) => b.value),
+                            axes: source.gamepad.axes.slice(0)
+                        };
+
+                        //console.log(data)
+                        /*for (var button_id in data.buttons) {
+                            if (data.buttons[button_id]) {
+                                console.log("button", button_id)
+                            }
+                        }*/
+
+
+                        //button 4 (right A) will start recording
+                        if (data.handedness == "right" && data.buttons[4] && mode == "NONE") {
+                            console.log("start recording")
+                            startRecording()
+                            mode = "RECORDING"
+                        } else {
+                            if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RECORDING") {
+                                console.log("stop recording")
+                                stopRecording()
+                                mode = "NONE"
+                            }
+
+                        }
+
+
+                        ///???? = B
+                        //4 == A
+                        //3 = ?grip
+                        //2=touchpad
+                        //1 = joystick
+                        //0 = trigger
+
+
+
+
+
+
+
+                        ///store this frames data to compate with in the next frame
+                        prevGamePads.set(source, data);
+                    }
+                }
+            }
+        }
+
+        function isIterable(obj) {  //function to check if object is iterable
+            // checks for null and undefined
+            if (obj == null) {
+                return false;
+            }
+            return typeof obj[Symbol.iterator] === "function";
+        }
+
+
+        var mediaRecorder
+        var recordedChunks
+
+
+        var onFail = function (e) {
+            console.log('Rejected!', e);
+        };
+
+        var onSuccess = function (stream) {
+            recordedChunks = [];
+
+            var options = { mimeType: 'audio/webm' };
+            mediaRecorder = new MediaRecorder(stream, options);
+            mediaRecorder.ondataavailable = handleDataAvailable;
+            mediaRecorder.start();
+
+            console.log("got here")
+
+            function handleDataAvailable(event) {
+                if (event.data.size > 0) {
+                    console.log("Here too!")
+                    recordedChunks.push(event.data);
+                } else {
+                    // ...
+                }
+            }
+        }
+
+        window.URL = window.URL || window.webkitURL;
+        navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+
+        var recorder;
+        var audio = document.querySelector('audio');
+
+        function startRecording() {
+            if (navigator.getUserMedia) {
+                navigator.getUserMedia({ audio: true }, onSuccess, onFail);
+            } else {
+                console.log('navigator.getUserMedia not present');
+            }
+        }
+
+        async function play() {
+            var superBuffer = new Blob(recordedChunks);
+
+            console.log("about to die", recordedChunks, superBuffer)
+
+            audio.src =
+                window.URL.createObjectURL(superBuffer);
+
+
+            console.log("here?")
+
+            //send blob to server
+            let fd = new FormData();
+            fd.append("audio_data", superBuffer);
+
+            //fetch url from /tts endpoint
+            let response = await fetch("/putAudio", {
+                body: fd,
+                method: "POST"
+            })
+
+            console.log("here too?", response)
+
+            let data = await response.json()
+
+            console.log("here three!")
+
+            console.log(data)
+
+            add3dImage(data)
+
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+            setTimeout(play, 0.1)
+
+        }
+
+
+        function add3dImage(data) {
+            let imgPath = data[1]
+            let dPath = data[2]
+
+            console.log("about to die",data,"img",imgPath,"d",dPath)
+            
+            const textureLoader = new THREE.TextureLoader();
+            const colorMap = textureLoader.load(imgPath);
+            const displacementMap = textureLoader.load(dPath);
+
+            let material = new THREE.MeshStandardMaterial({
+                color: colorMap,
+                displacementMap: displacementMap,
+                displacementScale: 1,
+                displacementBias: - 0.428408, // from original model
+                side: THREE.DoubleSide
+            });
+
+
+
+            let geometry=new THREE.BoxGeometry( 1, 1, 1 );            
+            let mesh = new THREE.Mesh( geometry, material );
+            scene.add( mesh );
+        }
+
+
+    </script>
+
+    <audio controls></audio>
+
+
+</body>
+
+</html>
