@@ -364,12 +364,8 @@
             mediaRecorder = new MediaRecorder(stream, options);
             mediaRecorder.ondataavailable = handleDataAvailable;
             mediaRecorder.start();
-
-            console.log("got here")
-
             function handleDataAvailable(event) {
                 if (event.data.size > 0) {
-                    console.log("Here too!")
                     recordedChunks.push(event.data);
                 } else {
                     // ...
@@ -408,18 +404,8 @@
 
         async function play(nextCubePosition) {
             var superBuffer = new Blob(recordedChunks);
-
-            console.log("about to die", recordedChunks, superBuffer)
-
             audio.src =
                 window.URL.createObjectURL(superBuffer);
-
-
-            console.log("here?")
-
-
-            
-
 
             let placeholder=addPlaceholder(nextCubePosition,"#aaaaaa");
             console.log("added placeholder")
@@ -433,14 +419,7 @@
                 body: fd,
                 method: "POST"
             })
-
-            console.log("here too?", response)
-
-            
-
             let data = await response.json()
-
-            console.log("here three!")
 
             console.log(data)
 
@@ -450,6 +429,9 @@
         }
 
         function stopRecording() {
+
+            if(!mediaRecorder) return
+
             mediaRecorder.stop();
 
             scene.remove(placeholderCube)
@@ -465,9 +447,6 @@
         function add3dImage(data,position) {
             let imgPath = data[1].substring(1)
             let dPath = data[2].substring(1)
-
-            console.log("about to die", data, "img", imgPath, "d", dPath)
-
             const textureLoader = new THREE.TextureLoader();
             const colorMap = textureLoader.load(imgPath);
             const displacementMap = textureLoader.load(dPath);
