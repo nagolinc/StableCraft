@@ -50,7 +50,14 @@
         function init() {
 
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x505050);
+            const bg_col=0x505050
+            scene.background = new THREE.Color(bg_col);
+
+            const near=10
+            const far=30
+            scene.fog = new THREE.Fog(bg_col, near, far);
+
+
 
             camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 30);
             camera.position.set(0, 1, 3);

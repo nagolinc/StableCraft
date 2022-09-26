@@ -9,6 +9,11 @@ import whisper
 import os
 import glob
 
+
+
+#some constants that matter
+num_inference_steps=30
+
 sample_path = "./static/samples"
 os.makedirs(sample_path, exist_ok=True)
 base_count = max([0]+[int(s[-9:-4]) for s in glob.glob(sample_path+"/[0-9][0-9][0-9][0-9][0-9].png")])+1
@@ -79,7 +84,7 @@ def process_image(image):
 
 #setup whispher
 
-whisper_model = whisper.load_model("base")
+whisper_model = whisper.load_model("small.en")
 
 #flask server
 app = Flask(__name__)
@@ -97,13 +102,13 @@ def putAudio():
     #with open("tmp.webm",'wb') as f:
         #f.write(audio_input)
     audio_input.save("tmp.webm")
-    result = whisper_model.transcribe("tmp.webm")
+    result = whisper_model.transcribe("tmp.webm",language="en")
 
     prompt=result["text"]
     print(prompt)
 
     with autocast("cuda"):
-        img = pipe([prompt],guidance_scale = 7.5,num_inference_steps=20)["sample"][0]
+        img = pipe([prompt],guidance_scale = 7.5,num_inference_steps=num_inference_steps)["sample"][0]
         imgPath=os.path.join(sample_path, "%05d.png"%base_count)
         base_count+=1
         img.save(imgPath)
