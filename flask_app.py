@@ -35,6 +35,7 @@ from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import random
 
+MIN_PROMPT_LENGTH=8
 
 
 def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30):
@@ -77,20 +78,42 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
 
 
   #text generation pipeline
-  tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-2.7B")
-  model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-2.7B")
-  generator = pipeline(task="text-generation", model=model, tokenizer=tokenizer)
+  #tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-2.7B")
+  #model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-2.7B")
+  tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-1.3B")
+  text_model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-1.3B")
+  generator = pipeline(task="text-generation", model=text_model, tokenizer=tokenizer,device=0)
 
-  all_prompts=["epic fantasy painting by Greg Rutkowski",
+  default_prompts=["epic fantasy painting by Greg Rutkowski",
     "anime drawing of Joe Biden as a character from Jojo's bizzare adventure",
-    "gelatinous cube from dungeons and dragons, unreal engine 5, ray tracing, trending on artstation"
+    "gelatinous cube from dungeons and dragons, unreal engine 5, ray tracing, trending on artstation",
+    "award winning national geographic photograph of a bear hugging a penguin",
+    "painting of Kim Kardashian as the Mona Lisa"
   ]
 
+  all_prompts=[]
+
   def generatePrompt(k=5,max_new_tokens=200):
-    prompts=random.sample(all_prompts,k)
-    textInput=prompts.join("\n")
-    output=generator(textInput,max_new_tokens=max_new_tokens,return_full_text=False)
-    return [s for s in output.split("\n") if len(s)>5][0]
+    if len(all_prompts)>=k:
+      prompts=random.sample(all_prompts,k)
+    else:
+      prompts=random.sample(default_prompts+all_prompts,k)
+    print("chose prompts",prompts)
+    #textInput="\n".join(prompts)+"\n"
+    textInput="\ndescription:\n".join([s.strip() for s in prompts])
+    output=generator(textInput,max_new_tokens=max_new_tokens,return_full_text=False)[0]['generated_text']
+    print("got output",output)
+    rv=[s for s in output.split("\n") if len(s)>MIN_PROMPT_LENGTH and "description:" not in s]
+    if len(rv)==0:
+      return random.choice(prompts)
+    '''#and let's try to take one of the longer prompts
+    rv.sort(key=lambda x:len(x),reverse=True)
+    print("rv",rv)
+    rv=[s for s in rv if len(s)>len(rv[0])//2]
+    print("rv",rv)'''
+    out=random.choice(rv)
+    print("returning",out)
+    return out
 
   def process_image(image):
       # prepare image for the model
@@ -137,7 +160,7 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
       prompt=result["text"]
       print(prompt)
 
-      if len(prompt)<5:
+      if len(prompt)<MIN_PROMPT_LENGTH:
         prompt=generatePrompt()
         print("generated prompt:",prompt)
       else:
@@ -168,9 +191,6 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='launch StableCraft')
   parser.add_argument('--diffusion_model', default="CompVis/stable-diffusion-v1-4")
   args = parser.parse_args()
-
-  print("about to die",args)
-
   app=setup(diffusion_model=args.diffusion_model)
   app.run()
 
