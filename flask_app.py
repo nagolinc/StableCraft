@@ -31,6 +31,9 @@ from PIL import Image, ImageFilter
 #@title
 import gradio
 
+from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import random
 
 
 
@@ -71,6 +74,23 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
 
   feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-large",cache_dir="./AI/StableDiffusion")
   model = DPTForDepthEstimation.from_pretrained("Intel/dpt-large",cache_dir="./AI/StableDiffusion")
+
+
+  #text generation pipeline
+  tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-2.7B")
+  model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-2.7B")
+  generator = pipeline(task="text-generation", model=model, tokenizer=tokenizer)
+
+  all_prompts=["epic fantasy painting by Greg Rutkowski",
+    "anime drawing of Joe Biden as a character from Jojo's bizzare adventure",
+    "gelatinous cube from dungeons and dragons, unreal engine 5, ray tracing, trending on artstation"
+  ]
+
+  def generatePrompt(k=5,max_new_tokens=200):
+    prompts=random.sample(all_prompts,k)
+    textInput=prompts.join("\n")
+    output=generator(textInput,max_new_tokens=max_new_tokens,return_full_text=False)
+    return [s for s in output.split("\n") if len(s)>5][0]
 
   def process_image(image):
       # prepare image for the model
@@ -116,6 +136,13 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
 
       prompt=result["text"]
       print(prompt)
+
+      if len(prompt)<5:
+        prompt=generatePrompt()
+        print("generated prompt:",prompt)
+      else:
+        all_prompts.append(prompt)
+
 
       with autocast("cuda"):
           img = pipe([prompt],guidance_scale = 7.5,num_inference_steps=num_inference_steps)["sample"][0]
