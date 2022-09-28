@@ -381,6 +381,7 @@
 
         
         let nextCubePosition;
+        let nextCubeRotation;
         let placeholderCube;
 
         function startRecording() {
@@ -391,13 +392,39 @@
             }
 
 
-            //camera position?
-            nextCubePosition = new THREE.Vector3();
-            nextCubePosition.setFromMatrixPosition( camera.matrixWorld );
-            nextCubePosition.y=1
-            nextCubePosition.x+=2
 
-            placeholderCube=addPlaceholder(nextCubePosition,"#00ff00");
+
+            //camera position?
+            const position = new THREE.Vector3();
+            const rotation = new THREE.Quaternion();
+            const scale = new THREE.Vector3();
+            
+
+            // the following line extracts the position, rotation and scale in world space
+            camera.matrixWorld.decompose( position, rotation, scale );
+
+            const euler = new THREE.Euler();
+            euler.setFromQuaternion ( rotation,"YZX")
+
+            console.log("camera mw",camera.matrixWorld,position,rotation,scale,euler)
+
+            //const camera_direction=camera.getWorldDirection()
+            //let r=Math.atan2(camera_direction.x,camera_direction.z)
+            //console.log("camera direction",camera_direction,r)
+            let r=euler.y
+
+
+            nextCubePosition = new THREE.Vector3().copy(position);
+            nextCubePosition.y=1
+            nextCubePosition.x-=2*Math.sin(r)
+            nextCubePosition.z-=2*Math.cos(r)
+
+            
+
+            nextCubeRotation = r
+            console.log("rotation",nextCubeRotation)
+
+            placeholderCube=addPlaceholder(nextCubePosition,nextCubeRotation,"#00ff00");
 
 
         }
@@ -407,7 +434,7 @@
             audio.src =
                 window.URL.createObjectURL(superBuffer);
 
-            let placeholder=addPlaceholder(nextCubePosition,"#aaaaaa");
+            let placeholder=addPlaceholder(nextCubePosition,nextCubeRotation,"#aaaaaa");
             console.log("added placeholder")
 
             //send blob to server
@@ -423,7 +450,7 @@
 
             console.log(data)
 
-            add3dImage(data,nextCubePosition)
+            add3dImage(data,nextCubePosition,nextCubeRotation)
             scene.remove(placeholder)
 
         }
@@ -444,7 +471,7 @@
         }
 
 
-        function add3dImage(data,position) {
+        function add3dImage(data,position,rotation) {
             let imgPath = data[1].substring(1)
             let dPath = data[2].substring(1)
             const textureLoader = new THREE.TextureLoader();
@@ -455,7 +482,7 @@
                 map: colorMap,
                 displacementMap: displacementMap,
                 displacementScale: 1.0,
-                displacementBias: 0, // from original model
+                displacementBias: -0.5, // from original model
                 side: THREE.DoubleSide
             });
 
@@ -465,11 +492,12 @@
             let geometry = new THREE.PlaneGeometry(1, 1, 100, 100);
             let mesh = new THREE.Mesh(geometry, material);
             scene.add(mesh);
-            mesh.rotation.y = - Math.PI / 2;
+            //mesh.rotation.y = rotation - Math.PI / 2;
+            mesh.rotation.y = rotation ;
             mesh.position.copy(position);
         }
 
-        function addPlaceholder(position,color) {            
+        function addPlaceholder(position,rotation,color) {            
             let material = new THREE.MeshStandardMaterial({
                 color:color,
                 side: THREE.DoubleSide
@@ -480,6 +508,7 @@
             scene.add(mesh);
 
             mesh.position.copy(position);
+            mesh.rotation.y = rotation - Math.PI;
 
             return mesh
         }
