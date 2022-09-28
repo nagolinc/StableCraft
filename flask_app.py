@@ -34,11 +34,12 @@ import gradio
 from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import random
+import re
 
 MIN_PROMPT_LENGTH=8
 
 
-def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30):
+def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30, no_fp16=False):
   global base_count
   #some constants that matter
   sample_path = "./static/samples"
@@ -63,13 +64,21 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
   def safety_checker(images, clip_input):
     return images, False
 
-  # make sure you're logged in with `huggingface-cli login`
-  pipe = StableDiffusionPipeline.from_pretrained(
-      diffusion_model,
-      revision="fp16", 
-      torch_dtype=torch.float16, 
-      use_auth_token=True,
-      cache_dir="./AI/StableDiffusion")  
+  if no_fp16:
+    # make sure you're logged in with `huggingface-cli login`
+    pipe = StableDiffusionPipeline.from_pretrained(
+        diffusion_model,
+        torch_dtype=torch.float16, 
+        use_auth_token=True,
+        cache_dir="./AI/StableDiffusion")  
+  else:
+    # make sure you're logged in with `huggingface-cli login`
+    pipe = StableDiffusionPipeline.from_pretrained(
+        diffusion_model,
+        revision="fp16", 
+        torch_dtype=torch.float16, 
+        use_auth_token=True,
+        cache_dir="./AI/StableDiffusion")  
 
   pipe.safety_checker=safety_checker
   pipe = pipe.to("cuda")
@@ -172,7 +181,8 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
 
       with autocast("cuda"):
           img = pipe([prompt],guidance_scale = 7.5,num_inference_steps=num_inference_steps)["sample"][0]
-          imgPath=os.path.join(sample_path, "%05d.png"%base_count)
+          imgName="%05d.png"%base_count
+          imgPath=os.path.join(sample_path, imgName)
           base_count+=1
           img.save(imgPath)
 
@@ -180,10 +190,27 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
       depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius = 2))
 
 
-      depthPath=os.path.join(sample_path, "%05d_d.png"%base_count)
+      depthName="%05d_d.png"%base_count
+      depthPath=os.path.join(sample_path, depthName)
       depth_map.save(depthPath)
 
-      return jsonify([result["text"],imgPath,depthPath])
+      return jsonify([prompt,imgName,depthName])
+  
+  @app.route("/saveData", methods=['POST'])
+  def saveData():
+    savePath = request.values['savePath']
+    savePath=re.sub(r'[^\w\.]', '',savePath)
+    fullSavePath="./static/saveData/"+savePath
+    print("saving to file",fullSavePath)
+    saveData = request.values['saveData']
+    with open(fullSavePath,"w") as f:
+      f.write(saveData)
+    return jsonify({
+      "success":True,
+      "savePath":savePath,
+      "saveData":saveData,
+    })
+
 
   return app
 
@@ -193,8 +220,10 @@ if __name__ == '__main__':
 
   parser = argparse.ArgumentParser(description='launch StableCraft')
   parser.add_argument('--diffusion_model', default="CompVis/stable-diffusion-v1-4")
+  parser.add_argument('--no_fp16', action='store_true')
   args = parser.parse_args()
-  app=setup(diffusion_model=args.diffusion_model)
+  print("args",args)
+  app=setup(diffusion_model=args.diffusion_model,no_fp16=args.no_fp16)
   app.run()
 
 

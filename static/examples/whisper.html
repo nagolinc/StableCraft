@@ -10,10 +10,6 @@
 
 <body>
 
-    <div id="info">
-        <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> vr - teleport
-    </div>
-
     <!-- Import maps polyfill -->
     <!-- Remove this when import maps will be widely supported -->
     <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
@@ -44,17 +40,33 @@
         let INTERSECTION;
         const tempMatrix = new THREE.Matrix4();
 
+        //save load logic
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        let savePath
+        if (urlParams.get("savePath")) {
+            savePath = urlParams.get("savePath")
+        } else {
+            savePath = "saveData0.json"
+        }
+
+        let saveData = {
+            "objects": []
+        }
+
+        doLoad(savePath)
+
         init();
         animate();
 
         function init() {
 
             scene = new THREE.Scene();
-            const bg_col=0x505050
+            const bg_col = 0x505050
             scene.background = new THREE.Color(bg_col);
 
-            const near=10
-            const far=30
+            const near = 10
+            const far = 30
             scene.fog = new THREE.Fog(bg_col, near, far);
 
 
@@ -62,10 +74,10 @@
             camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 30);
             camera.position.set(0, 1, 3);
 
-            const roomSize=100
+            const roomSize = 100
 
             room = new THREE.LineSegments(
-                new BoxLineGeometry(6*roomSize, 6, 6*roomSize, 10*roomSize, 10, 10*roomSize).translate(0, 3, 0),
+                new BoxLineGeometry(6 * roomSize, 6, 6 * roomSize, 10 * roomSize, 10, 10 * roomSize).translate(0, 3, 0),
                 new THREE.LineBasicMaterial({ color: 0x808080 })
             );
             scene.add(room);
@@ -83,11 +95,11 @@
             scene.add(marker);
 
             floor = new THREE.Mesh(
-                new THREE.PlaneGeometry(4.8*roomSize, 4.8*roomSize, 2, 2).rotateX(- Math.PI / 2),
+                new THREE.PlaneGeometry(4.8 * roomSize, 4.8 * roomSize, 2, 2).rotateX(- Math.PI / 2),
                 new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.25 })
             );
             scene.add(floor);
-            floor.scale.set(2,2,2);
+            floor.scale.set(2, 2, 2);
 
             raycaster = new THREE.Raycaster();
 
@@ -379,7 +391,7 @@
         var recorder;
         var audio = document.querySelector('audio');
 
-        
+
         let nextCubePosition;
         let nextCubeRotation;
         let placeholderCube;
@@ -398,33 +410,33 @@
             const position = new THREE.Vector3();
             const rotation = new THREE.Quaternion();
             const scale = new THREE.Vector3();
-            
+
 
             // the following line extracts the position, rotation and scale in world space
-            camera.matrixWorld.decompose( position, rotation, scale );
+            camera.matrixWorld.decompose(position, rotation, scale);
 
             const euler = new THREE.Euler();
-            euler.setFromQuaternion ( rotation,"YZX")
+            euler.setFromQuaternion(rotation, "YZX")
 
-            console.log("camera mw",camera.matrixWorld,position,rotation,scale,euler)
+            console.log("camera mw", camera.matrixWorld, position, rotation, scale, euler)
 
             //const camera_direction=camera.getWorldDirection()
             //let r=Math.atan2(camera_direction.x,camera_direction.z)
             //console.log("camera direction",camera_direction,r)
-            let r=euler.y
+            let r = euler.y
 
 
             nextCubePosition = new THREE.Vector3().copy(position);
-            nextCubePosition.y=1
-            nextCubePosition.x-=2*Math.sin(r)
-            nextCubePosition.z-=2*Math.cos(r)
+            nextCubePosition.y = 1
+            nextCubePosition.x -= 2 * Math.sin(r)
+            nextCubePosition.z -= 2 * Math.cos(r)
 
-            
+
 
             nextCubeRotation = r
-            console.log("rotation",nextCubeRotation)
+            console.log("rotation", nextCubeRotation)
 
-            placeholderCube=addPlaceholder(nextCubePosition,nextCubeRotation,"#00ff00");
+            placeholderCube = addPlaceholder(nextCubePosition, nextCubeRotation, "#00ff00");
 
 
         }
@@ -434,7 +446,7 @@
             audio.src =
                 window.URL.createObjectURL(superBuffer);
 
-            let placeholder=addPlaceholder(nextCubePosition,nextCubeRotation,"#aaaaaa");
+            let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa");
             console.log("added placeholder")
 
             //send blob to server
@@ -450,20 +462,20 @@
 
             console.log(data)
 
-            add3dImage(data,nextCubePosition,nextCubeRotation)
+            add3dImage(data, nextCubePosition, nextCubeRotation, true)
             scene.remove(placeholder)
 
         }
 
         function stopRecording() {
 
-            if(!mediaRecorder) return
+            if (!mediaRecorder) return
 
             mediaRecorder.stop();
 
             scene.remove(placeholderCube)
-            
-            function doPlay(){
+
+            function doPlay() {
                 play(nextCubePosition)
             }
             setTimeout(doPlay, 0.1)
@@ -471,9 +483,9 @@
         }
 
 
-        function add3dImage(data,position,rotation) {
-            let imgPath = data[1].substring(1)
-            let dPath = data[2].substring(1)
+        function add3dImage(data, position, rotation, saveThisObject) {
+            let imgPath = "../samples/" + data[1]
+            let dPath = "../samples/" + data[2]
             const textureLoader = new THREE.TextureLoader();
             const colorMap = textureLoader.load(imgPath);
             const displacementMap = textureLoader.load(dPath);
@@ -486,20 +498,39 @@
                 side: THREE.DoubleSide
             });
 
-
-
             //let geometry = new THREE.BoxGeometry(1, 1, 1, 100, 100, 100);
             let geometry = new THREE.PlaneGeometry(1, 1, 100, 100);
             let mesh = new THREE.Mesh(geometry, material);
             scene.add(mesh);
             //mesh.rotation.y = rotation - Math.PI / 2;
-            mesh.rotation.y = rotation ;
+            mesh.rotation.y = rotation;
             mesh.position.copy(position);
+
+            if (saveThisObject) {
+
+                let thisObject = {
+                    "name": data[0],
+                    "map": data[1],
+                    "disp": data[2],
+                    "xyz": [mesh.position.x, mesh.position.y, mesh.position.z],
+                    "rotation": mesh.rotation.y,
+                }
+
+                saveData.objects.push(thisObject)
+
+                if (savePath != "NONE") {
+                    doSave()
+                }
+
+            }
+
+
+
         }
 
-        function addPlaceholder(position,rotation,color) {            
+        function addPlaceholder(position, rotation, color) {
             let material = new THREE.MeshStandardMaterial({
-                color:color,
+                color: color,
                 side: THREE.DoubleSide
             });
 
@@ -513,6 +544,55 @@
             return mesh
         }
 
+        async function doSave() {
+            let fd = new FormData();
+            fd.append("savePath", savePath);
+            fd.append("saveData", JSON.stringify(saveData));
+
+            //fetch url from /tts endpoint
+            let response = await fetch("/saveData", {
+                body: fd,
+                method: "POST"
+            })
+            let data = await response.json()
+            console.log(data)
+        }
+
+        async function doLoad(savePath) {
+            //fetch url from /tts endpoint
+            let response = await fetch("/static/saveData/" + savePath, {
+                headers: {
+                    'Cache-Control': 'no-cache'
+                }
+            })
+
+            let data
+
+            if (response.status !== 200) {
+                // You can do your error handling here
+                console.log("Failed loading")
+                return
+            } else {
+                // Call the .json() method on your response to get your JSON data
+                data = await response.json();
+            }
+
+
+            console.log("Loaded data", data)
+
+            if (!data) return
+
+            for (var object of data.objects) {
+                let position = new THREE.Vector3(object.xyz[0], object.xyz[1], object.xyz[2])
+                let rotation = object.rotation
+                let d = [object.name, object.map, object.disp]
+                console.log("adding object", d, position, rotation)
+                add3dImage(d, position, rotation, false)
+            }
+
+
+            saveData = data
+        }
 
 
     </script>
