@@ -51,6 +51,15 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
   _login(HfApi(), token=hf_token)
 
 
+  #text generation pipeline
+  #tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-2.7B")
+  #model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-2.7B")
+  tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-1.3B",torch_dtype=torch.float16)
+  text_model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-1.3B",torch_dtype=torch.float16)
+  generator = pipeline(task="text-generation", model=text_model, tokenizer=tokenizer,device=0)
+
+
+
   def safety_checker(images, clip_input):
     return images, False
 
@@ -77,13 +86,7 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
   model = DPTForDepthEstimation.from_pretrained("Intel/dpt-large",cache_dir="./AI/StableDiffusion")
 
 
-  #text generation pipeline
-  #tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-2.7B")
-  #model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-2.7B")
-  tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-1.3B")
-  text_model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-1.3B")
-  generator = pipeline(task="text-generation", model=text_model, tokenizer=tokenizer,device=0)
-
+ 
   default_prompts=["epic fantasy painting by Greg Rutkowski",
     "anime drawing of Joe Biden as a character from Jojo's bizzare adventure",
     "gelatinous cube from dungeons and dragons, unreal engine 5, ray tracing, trending on artstation",
