@@ -5,7 +5,6 @@
     <title>three.js vr - teleport</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <link type="text/css" rel="stylesheet" href="main.css">
 </head>
 
 <body>
@@ -56,13 +55,20 @@
             "objects": []
         }
 
-        doLoad(savePath)
+        if (savePath != "NONE") {
+            doLoad(savePath)
+        }
+
 
         //store objects (so we can do interactions)
         let allMeshes = []
         let allCaptions = []
-        console.log(FontLoader)
         var loader = new FontLoader();
+
+        //stuff
+
+        let cameraOffsetPosition = new THREE.Vector3()
+        let cameraOffsetRotation = new THREE.Quaternion()
 
         init();
         animate();
@@ -130,6 +136,7 @@
 
             }
 
+
             function onSelectEnd() {
 
                 this.userData.isSelecting = false;
@@ -138,12 +145,40 @@
                     displayCaption(TARGET_OBJECT)
                 } else if (INTERSECTION) {
 
-                    const offsetPosition = { x: - INTERSECTION.x, y: - INTERSECTION.y, z: - INTERSECTION.z, w: 1 };
-                    const offsetRotation = new THREE.Quaternion();
+                    /*const offsetPosition = { x: - INTERSECTION.x, y: - INTERSECTION.y, z: - INTERSECTION.z, w: 1 };
+                    const offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
                     const transform = new XRRigidTransform(offsetPosition, offsetRotation);
                     const teleportSpaceOffset = baseReferenceSpace.getOffsetReferenceSpace(transform);
 
-                    renderer.xr.setReferenceSpace(teleportSpaceOffset);
+                    cameraOffsetPosition.copy(offsetPosition)*/
+
+                    if(INTERSECTION){
+                        cameraOffsetPosition.copy(INTERSECTION)
+                    }else{
+                        console.log("this hsould never happen",INTERSECTION.point)
+                    }
+                    
+                    console.log("huH?",INTERSECTION,INTERSECTION.point,cameraOffsetPosition)
+
+                    let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
+                    let nullRotation = new THREE.Quaternion()
+                    const offsetPosition = { x: - cameraOffsetPosition.x, y: - cameraOffsetPosition.y, z: - cameraOffsetPosition.z, w: 1 };
+                    let offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
+                    const turn = new THREE.Quaternion()
+                    turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+                    //offsetRotation=offsetRotation.dot(turn)
+                    //offsetRotation.multiply(turn)
+                    //cameraOffsetRotation.copy(offsetRotation)
+                    //renderer.xr.setReferenceSpace(teleportSpaceOffset);
+                    
+
+                    const transform = new XRRigidTransform(offsetPosition, nullRotation);
+                    const doRotate = new XRRigidTransform(nullPosition, offsetRotation);
+                    const t2 = baseReferenceSpace.getOffsetReferenceSpace(doRotate)
+                    const t3 = t2.getOffsetReferenceSpace(transform);
+                    renderer.xr.setReferenceSpace(t3);
+
+                    
 
                 }
 
@@ -344,11 +379,69 @@
                             }
                         }*/
 
+                        //snap turn
+                        //console.log(data.axes)
+                        //axis [touchpad X, touchpad Y, joystick X, joystick Y]
+                        if (mode == "NONE" && data.axes[2] > 0.75) {
+                            console.log("start turning right")
+                            mode = "SNAPTURN_RIGHT"
+                        }
+
+                        if (mode == "NONE" && data.axes[2] < -0.75) {
+                            console.log("starting left turn")
+                            mode = "SNAPTURN_LEFT"
+                        }
+
+                        if (mode == "SNAPTURN_RIGHT" && data.axes[2] < 0.05) {
+                            //do snapturn
+                            console.log("turning right")
+
+                            let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
+                            let nullRotation = new THREE.Quaternion()
+                            const offsetPosition = { x: - cameraOffsetPosition.x, y: - cameraOffsetPosition.y, z: - cameraOffsetPosition.z, w: 1 };
+                            let offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
+                            const turn = new THREE.Quaternion()
+                            turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+                            //offsetRotation=offsetRotation.dot(turn)
+                            offsetRotation.multiply(turn)
+                            cameraOffsetRotation.copy(offsetRotation)
+                            const transform = new XRRigidTransform(offsetPosition, nullRotation);
+                            const doRotate = new XRRigidTransform(nullPosition, offsetRotation);
+                            const t2 = baseReferenceSpace.getOffsetReferenceSpace(doRotate)
+                            const t3 = t2.getOffsetReferenceSpace(transform);
+                            renderer.xr.setReferenceSpace(t3);
+
+                            mode = "NONE"
+                        }
+
+                        if (mode == "SNAPTURN_LEFT" && data.axes[2] > -0.05) {
+                            //do snapturn
+                            console.log("turning left")
+
+                            let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
+                            let nullRotation = new THREE.Quaternion()
+                            const offsetPosition = { x: - cameraOffsetPosition.x, y: - cameraOffsetPosition.y, z: - cameraOffsetPosition.z, w: 1 };
+                            let offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
+                            const turn = new THREE.Quaternion()
+                            turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 4);
+                            //offsetRotation=offsetRotation.dot(turn)
+                            offsetRotation.multiply(turn)
+                            cameraOffsetRotation.copy(offsetRotation)
+                            const transform = new XRRigidTransform(offsetPosition, nullRotation);
+                            const doRotate = new XRRigidTransform(nullPosition, offsetRotation);
+                            const t2 = baseReferenceSpace.getOffsetReferenceSpace(doRotate)
+                            const t3 = t2.getOffsetReferenceSpace(transform);
+                            renderer.xr.setReferenceSpace(t3);
+
+                            mode = "NONE"
+                        }
+
+
+
 
                         //button 4 (right A) will start recording
                         if (data.handedness == "right" && data.buttons[4] && mode == "NONE") {
                             console.log("start recording")
-
                             //check if we want to delete
                             tempMatrix.identity().extractRotation(controller.matrixWorld);
                             raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
@@ -356,17 +449,8 @@
                             //check for intersects with meshs
                             const intersects_mesh = raycaster.intersectObjects(allMeshes);
                             if (intersects_mesh.length > 0) {
-                                //displayCaption(intersects_mesh[0].object)
-                                let objectToDelete = intersects_mesh[0].object
-                                //delete object
-                                let indexToDelete=allMeshes.indexOf(objectToDelete)
-                                if(indexToDelete>=0){
-                                    allMeshes=allMeshes.splice(indexToDelete,1)
-                                }else{
-                                    console.log("this should never happen!")
-                                }
-                                scene.remove(objectToDelete)
-
+                                console.log("deleting")
+                                mode = "DELETING"
                             } else {
                                 startRecording()
                                 mode = "RECORDING"
@@ -378,24 +462,49 @@
                                 mode = "NONE"
                             }
 
+                            if (data.handedness == "right" && data.buttons[4] == 0 && mode == "DELETING") {
+
+                                //check if we want to delete
+                                tempMatrix.identity().extractRotation(controller.matrixWorld);
+                                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                                raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                                //check for intersects with meshs
+                                const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                                if (intersects_mesh.length > 0) {
+                                    //displayCaption(intersects_mesh[0].object)
+                                    let objectToDelete = intersects_mesh[0].object
+                                    //delete object
+                                    let indexToDelete = allMeshes.indexOf(objectToDelete)
+                                    if (indexToDelete >= 0) {
+                                        allMeshes.splice(indexToDelete, 1)
+                                        if (objectToDelete.userData["caption"]) {
+                                            scene.remove(objectToDelete.userData["caption"])
+                                            objectToDelete.userData["caption"] = null
+                                        }
+                                        scene.remove(objectToDelete)
+                                    } else {
+                                        console.log("this should never happen!")
+                                    }
+                                    console.log("deleted")
+                                } else {
+                                    console.log("not deleting")
+                                }
+                                mode = "NONE"
+                            }
+
+
+                            //button map
+                            ///???? = B
+                            //4 == A
+                            //3 = ?grip
+                            //2=touchpad
+                            //1 = joystick
+                            //0 = trigger
+
+
+                            ///store this frames data to compate with in the next frame
+                            prevGamePads.set(source, data);
                         }
-
-
-                        ///???? = B
-                        //4 == A
-                        //3 = ?grip
-                        //2=touchpad
-                        //1 = joystick
-                        //0 = trigger
-
-
-
-
-
-
-
-                        ///store this frames data to compate with in the next frame
-                        prevGamePads.set(source, data);
                     }
                 }
             }
@@ -451,39 +560,21 @@
             } else {
                 console.log('navigator.getUserMedia not present');
             }
-
-
-
-
             //camera position?
             const position = new THREE.Vector3();
             const rotation = new THREE.Quaternion();
             const scale = new THREE.Vector3();
-
-
             // the following line extracts the position, rotation and scale in world space
             camera.matrixWorld.decompose(position, rotation, scale);
-
             const euler = new THREE.Euler();
             euler.setFromQuaternion(rotation, "YZX")
-
-            console.log("camera mw", camera.matrixWorld, position, rotation, scale, euler)
-
-            //const camera_direction=camera.getWorldDirection()
-            //let r=Math.atan2(camera_direction.x,camera_direction.z)
-            //console.log("camera direction",camera_direction,r)
             let r = euler.y
-
-
+            //use this to place object
             nextCubePosition = new THREE.Vector3().copy(position);
             nextCubePosition.y = 1
             nextCubePosition.x -= 2 * Math.sin(r)
             nextCubePosition.z -= 2 * Math.cos(r)
-
-
-
             nextCubeRotation = r
-            console.log("rotation", nextCubeRotation)
 
             placeholderCube = addPlaceholder(nextCubePosition, nextCubeRotation, "#00ff00");
 
