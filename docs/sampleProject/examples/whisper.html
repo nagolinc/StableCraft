@@ -594,7 +594,7 @@
 
         async function doLoad(savePath) {
             //fetch url from /tts endpoint
-            let response = await fetch("/static/saveData/" + savePath, {
+            let response = await fetch("../saveData/" + savePath, {
                 headers: {
                     'Cache-Control': 'no-cache'
                 }
