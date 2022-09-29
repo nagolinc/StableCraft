@@ -134,9 +134,9 @@
 
                 this.userData.isSelecting = false;
 
-                if(TARGET_OBJECT){
+                if (TARGET_OBJECT) {
                     displayCaption(TARGET_OBJECT)
-                }else if (INTERSECTION) {
+                } else if (INTERSECTION) {
 
                     const offsetPosition = { x: - INTERSECTION.x, y: - INTERSECTION.y, z: - INTERSECTION.z, w: 1 };
                     const offsetRotation = new THREE.Quaternion();
@@ -258,10 +258,10 @@
                 const intersects_mesh = raycaster.intersectObjects(allMeshes);
                 if (intersects_mesh.length > 0) {
                     //displayCaption(intersects_mesh[0].object)
-                    TARGET_OBJECT=intersects_mesh[0].object
+                    TARGET_OBJECT = intersects_mesh[0].object
                 } else {
                     //hideAllCaptions()
-                    TARGET_OBJECT=null
+                    TARGET_OBJECT = null
                 }
 
                 const intersects = raycaster.intersectObjects([floor]);
@@ -348,8 +348,29 @@
                         //button 4 (right A) will start recording
                         if (data.handedness == "right" && data.buttons[4] && mode == "NONE") {
                             console.log("start recording")
-                            startRecording()
-                            mode = "RECORDING"
+
+                            //check if we want to delete
+                            tempMatrix.identity().extractRotation(controller.matrixWorld);
+                            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                            raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                            //check for intersects with meshs
+                            const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                            if (intersects_mesh.length > 0) {
+                                //displayCaption(intersects_mesh[0].object)
+                                let objectToDelete = intersects_mesh[0].object
+                                //delete object
+                                let indexToDelete=allMeshes.indexOf(objectToDelete)
+                                if(indexToDelete>=0){
+                                    allMeshes=allMeshes.splice(indexToDelete,1)
+                                }else{
+                                    console.log("this should never happen!")
+                                }
+                                scene.remove(objectToDelete)
+
+                            } else {
+                                startRecording()
+                                mode = "RECORDING"
+                            }
                         } else {
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RECORDING") {
                                 console.log("stop recording")
@@ -628,62 +649,62 @@
             saveData = data
         }
 
-        function displayCaption(parentMesh){
-            
-            
-            if(parentMesh.userData["caption"]){
+        function displayCaption(parentMesh) {
+
+
+            if (parentMesh.userData["caption"]) {
                 scene.remove(parentMesh.userData["caption"])
-                parentMesh.userData["caption"]=null
+                parentMesh.userData["caption"] = null
                 return
             }
-            
-            
+
+
             let prompt = parentMesh.userData["prompt"]
 
 
 
-            
+
             loader.load('fonts/helvetiker_regular.typeface.json', function (font) {
 
                 const color = 0x000000;
-                const scale=0.002
+                const scale = 0.002
 
-                const matDark = new THREE.LineBasicMaterial( {
-                  color: color,
-                  side: THREE.DoubleSide
-                } );
+                const matDark = new THREE.LineBasicMaterial({
+                    color: color,
+                    side: THREE.DoubleSide
+                });
 
-                const matLite = new THREE.MeshBasicMaterial( {
-                  color: color,
-                  transparent: true,
-                  opacity: 0.4,
-                  side: THREE.DoubleSide
-                } );
+                const matLite = new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: 0.4,
+                    side: THREE.DoubleSide
+                });
 
                 const message = prompt;
 
-                const shapes = font.generateShapes( message, 100 );
+                const shapes = font.generateShapes(message, 100);
 
-                const geometry = new THREE.ShapeGeometry( shapes );
+                const geometry = new THREE.ShapeGeometry(shapes);
 
                 geometry.computeBoundingBox();
 
-                const xMid = - 0.5 * ( geometry.boundingBox.max.x - geometry.boundingBox.min.x );
+                const xMid = - 0.5 * (geometry.boundingBox.max.x - geometry.boundingBox.min.x);
 
-                geometry.translate( xMid, 0, 0 );
+                geometry.translate(xMid, 0, 0);
 
                 // make shape ( N.B. edge view not visible )
 
-                const text = new THREE.Mesh( geometry, matLite );
-                scene.add( text );
+                const text = new THREE.Mesh(geometry, matLite);
+                scene.add(text);
 
                 text.position.copy(parentMesh.position)
-                text.position.y+=1
+                text.position.y += 1
                 text.rotation.copy(parentMesh.rotation)
-                text.scale.set(scale,scale,scale)
+                text.scale.set(scale, scale, scale)
 
                 //add to parent user data
-                parentMesh.userData["caption"]=text
+                parentMesh.userData["caption"] = text
 
             });
 
