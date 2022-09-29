@@ -35,6 +35,7 @@ from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import random
 import re
+import hashlib
 
 MIN_PROMPT_LENGTH=8
 
@@ -164,6 +165,9 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
   def putAudio():
       global base_count
       audio_input = request.files['audio_data']
+      width=request.values.get("width",default=512)
+      height=request.values.get("width",default=512)
+      seed=request.values.get("width",default=-1)
       #with open("tmp.webm",'wb') as f:
           #f.write(audio_input)
       audio_input.save("tmp.webm")
@@ -178,10 +182,23 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
       else:
         all_prompts.append(prompt)
 
+      if seed==-1:
+        seed=random.randint(0,10**9)
+
+      
+      h=hashlib.sha224(("%s --seed %d"%(prompt,seed)).encode('utf-8')).hexdigest()
+
 
       with autocast("cuda"):
-          img = pipe([prompt],guidance_scale = 7.5,num_inference_steps=num_inference_steps)["sample"][0]
-          imgName="%05d.png"%base_count
+          generator = torch.Generator("cuda").manual_seed(seed)
+          img = pipe([prompt],
+            guidance_scale = 7.5,
+            num_inference_steps=num_inference_steps,
+            width=width,
+            height=height,
+            generator=generator
+            )["sample"][0]
+          imgName="%s.png"%h
           imgPath=os.path.join(sample_path, imgName)
           base_count+=1
           img.save(imgPath)
@@ -189,8 +206,7 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
       depth_map=process_image(img)
       depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius = 2))
 
-
-      depthName="%05d_d.png"%base_count
+      depthName="%s_d.png"%h
       depthPath=os.path.join(sample_path, depthName)
       depth_map.save(depthPath)
 
