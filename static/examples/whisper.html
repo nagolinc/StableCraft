@@ -71,6 +71,7 @@
 
         let cameraOffsetPosition = new THREE.Vector3()
         let cameraOffsetRotation = new THREE.Quaternion()
+        let rotationCounter=0;
 
         init();
         animate();
@@ -168,6 +169,10 @@
                     let offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
                     const turn = new THREE.Quaternion()
                     turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+
+                    
+
+
                     //offsetRotation=offsetRotation.dot(turn)
                     //offsetRotation.multiply(turn)
                     //cameraOffsetRotation.copy(offsetRotation)
@@ -396,30 +401,102 @@
 
                         if (mode == "SNAPTURN_RIGHT_"+data.handedness && data.axes[2] < 0.05) {
                             //do snapturn
-                            console.log("turning right")
-
+                            console.log("turning right")                            
+                            let turnAmount=Math.PI / 4
+                            //fix for roomscale (otherwise snap turn rotates around room center)
+                            let deltaVector={x:cameraOffsetPosition.x-camera.position.x,
+                                y:cameraOffsetPosition.y-camera.position.y,
+                                z:cameraOffsetPosition.z-camera.position.z
+                            }
+                            //console.log("rotation counter",rotationCounter,turnAmount,rotationCounter+turnAmount)
+                            //console.log("camera positon",camera.position)
+                            //console.log("delta vector",deltaVector,rotationCounter)//delta vector is in the rotatated coordinates :(
+                            let undeltaVector={
+                                x:deltaVector.x * Math.cos(rotationCounter)+deltaVector.z*Math.sin(rotationCounter),
+                                y:deltaVector.y,
+                                z:deltaVector.x * -Math.sin(rotationCounter)+deltaVector.z*Math.cos(rotationCounter)
+                            }
+                            //console.log("undelta vector",undeltaVector)//undelta vector is in the room coordinates?
+                            /*let predictedDelta={
+                                x: undeltaVector.x*Math.cos(rotationCounter) + undeltaVector.z * -Math.sin(rotationCounter),
+                                y: undeltaVector.y,
+                                z: undeltaVector.x*Math.sin(rotationCounter) + undeltaVector.z * Math.cos(rotationCounter)                                
+                            }
+                            //console.log("predicted delta",predictedDelta)*/
+                            let predictedNexDelta={
+                                x: undeltaVector.x*Math.cos(rotationCounter+turnAmount) + undeltaVector.z * -Math.sin(rotationCounter+turnAmount),
+                                y: undeltaVector.y,
+                                z: undeltaVector.x*Math.sin(rotationCounter+turnAmount) + undeltaVector.z * Math.cos(rotationCounter+turnAmount)                                
+                            }
+                            //console.log("predicted next delta",predictedNexDelta)
+                            let predictedNextCameraPosition={
+                                x:cameraOffsetPosition.x-predictedNexDelta.x,
+                                y:cameraOffsetPosition.y-predictedNexDelta.y,
+                                z:cameraOffsetPosition.z-predictedNexDelta.z,                            
+                            }
+                            //console.log("predicted next camera position",predictedNextCameraPosition)
+                            //now let's just adjust by the difference
+                            cameraOffsetPosition.x=cameraOffsetPosition.x-predictedNextCameraPosition.x+camera.position.x
+                            cameraOffsetPosition.z=cameraOffsetPosition.z-predictedNextCameraPosition.z+camera.position.z
+                            //and let's do the transform (sorry this is so ugly)let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
                             let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
                             let nullRotation = new THREE.Quaternion()
                             const offsetPosition = { x: - cameraOffsetPosition.x, y: - cameraOffsetPosition.y, z: - cameraOffsetPosition.z, w: 1 };
                             let offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
                             const turn = new THREE.Quaternion()
-                            turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+                            turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), turnAmount);
                             //offsetRotation=offsetRotation.dot(turn)
                             offsetRotation.multiply(turn)
+                            rotationCounter+=turnAmount
                             cameraOffsetRotation.copy(offsetRotation)
                             const transform = new XRRigidTransform(offsetPosition, nullRotation);
                             const doRotate = new XRRigidTransform(nullPosition, offsetRotation);
                             const t2 = baseReferenceSpace.getOffsetReferenceSpace(doRotate)
                             const t3 = t2.getOffsetReferenceSpace(transform);
                             renderer.xr.setReferenceSpace(t3);
-
                             mode = "NONE"
                         }
 
                         if (mode == "SNAPTURN_LEFT_"+data.handedness && data.axes[2] > -0.05) {
                             //do snapturn
                             console.log("turning left")
-
+                            let turnAmount=-Math.PI / 4
+                            //fix for roomscale (otherwise snap turn rotates around room center)
+                            let deltaVector={x:cameraOffsetPosition.x-camera.position.x,
+                                y:cameraOffsetPosition.y-camera.position.y,
+                                z:cameraOffsetPosition.z-camera.position.z
+                            }
+                            //console.log("rotation counter",rotationCounter,turnAmount,rotationCounter+turnAmount)
+                            //console.log("camera positon",camera.position)
+                            //console.log("delta vector",deltaVector,rotationCounter)//delta vector is in the rotatated coordinates :(
+                            let undeltaVector={
+                                x:deltaVector.x * Math.cos(rotationCounter)+deltaVector.z*Math.sin(rotationCounter),
+                                y:deltaVector.y,
+                                z:deltaVector.x * -Math.sin(rotationCounter)+deltaVector.z*Math.cos(rotationCounter)
+                            }
+                            //console.log("undelta vector",undeltaVector)//undelta vector is in the room coordinates?
+                            /*let predictedDelta={
+                                x: undeltaVector.x*Math.cos(rotationCounter) + undeltaVector.z * -Math.sin(rotationCounter),
+                                y: undeltaVector.y,
+                                z: undeltaVector.x*Math.sin(rotationCounter) + undeltaVector.z * Math.cos(rotationCounter)                                
+                            }
+                            //console.log("predicted delta",predictedDelta)*/
+                            let predictedNexDelta={
+                                x: undeltaVector.x*Math.cos(rotationCounter+turnAmount) + undeltaVector.z * -Math.sin(rotationCounter+turnAmount),
+                                y: undeltaVector.y,
+                                z: undeltaVector.x*Math.sin(rotationCounter+turnAmount) + undeltaVector.z * Math.cos(rotationCounter+turnAmount)                                
+                            }
+                            //console.log("predicted next delta",predictedNexDelta)
+                            let predictedNextCameraPosition={
+                                x:cameraOffsetPosition.x-predictedNexDelta.x,
+                                y:cameraOffsetPosition.y-predictedNexDelta.y,
+                                z:cameraOffsetPosition.z-predictedNexDelta.z,                            
+                            }
+                            //console.log("predicted next camera position",predictedNextCameraPosition)
+                            //now let's just adjust by the difference
+                            cameraOffsetPosition.x=cameraOffsetPosition.x-predictedNextCameraPosition.x+camera.position.x
+                            cameraOffsetPosition.z=cameraOffsetPosition.z-predictedNextCameraPosition.z+camera.position.z
+                            //and let's do the transform (sorry this is so ugly)
                             let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
                             let nullRotation = new THREE.Quaternion()
                             const offsetPosition = { x: - cameraOffsetPosition.x, y: - cameraOffsetPosition.y, z: - cameraOffsetPosition.z, w: 1 };
@@ -428,6 +505,7 @@
                             turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 4);
                             //offsetRotation=offsetRotation.dot(turn)
                             offsetRotation.multiply(turn)
+                            rotationCounter+=turnAmount
                             cameraOffsetRotation.copy(offsetRotation)
                             const transform = new XRRigidTransform(offsetPosition, nullRotation);
                             const doRotate = new XRRigidTransform(nullPosition, offsetRotation);
