@@ -165,9 +165,10 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
   def putAudio():
       global base_count
       audio_input = request.files['audio_data']
-      width=request.values.get("width",default=512)
-      height=request.values.get("width",default=512)
-      seed=request.values.get("width",default=-1)
+      width=request.values.get("width",default=512, type=int)
+      height=request.values.get("height",default=512, type=int)
+      seed=request.values.get("seed",default=-1, type=int)
+      print("img properties",width,height,seed)
       #with open("tmp.webm",'wb') as f:
           #f.write(audio_input)
       audio_input.save("tmp.webm")

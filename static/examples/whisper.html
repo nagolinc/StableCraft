@@ -5,7 +5,6 @@
     <title>three.js vr - teleport</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <link type="text/css" rel="stylesheet" href="main.css">
 </head>
 
 <body>
@@ -56,13 +55,22 @@
             "objects": []
         }
 
-        doLoad(savePath)
+        if (savePath != "NONE") {
+            doLoad(savePath)
+        }
+
 
         //store objects (so we can do interactions)
         let allMeshes = []
         let allCaptions = []
-        console.log(FontLoader)
         var loader = new FontLoader();
+
+        let aspect_ratio="portrait"
+
+        //stuff
+
+        let cameraOffsetPosition = new THREE.Vector3()
+        let cameraOffsetRotation = new THREE.Quaternion()
 
         init();
         animate();
@@ -130,20 +138,49 @@
 
             }
 
+
             function onSelectEnd() {
 
                 this.userData.isSelecting = false;
 
-                if(TARGET_OBJECT){
+                if (TARGET_OBJECT) {
                     displayCaption(TARGET_OBJECT)
-                }else if (INTERSECTION) {
+                } else if (INTERSECTION) {
 
-                    const offsetPosition = { x: - INTERSECTION.x, y: - INTERSECTION.y, z: - INTERSECTION.z, w: 1 };
-                    const offsetRotation = new THREE.Quaternion();
+                    /*const offsetPosition = { x: - INTERSECTION.x, y: - INTERSECTION.y, z: - INTERSECTION.z, w: 1 };
+                    const offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
                     const transform = new XRRigidTransform(offsetPosition, offsetRotation);
                     const teleportSpaceOffset = baseReferenceSpace.getOffsetReferenceSpace(transform);
 
-                    renderer.xr.setReferenceSpace(teleportSpaceOffset);
+                    cameraOffsetPosition.copy(offsetPosition)*/
+
+                    let delta=new THREE.Vector3().copy(INTERSECTION)
+                    delta.addScaledVector(camera.position,-1)
+                    delta.y=0
+                    //cameraOffsetPosition.copy(INTERSECTION)
+                    cameraOffsetPosition.add(delta)
+                    console.log(camera.position,INTERSECTION)
+                    
+
+                    let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
+                    let nullRotation = new THREE.Quaternion()
+                    const offsetPosition = { x: - cameraOffsetPosition.x, y: - cameraOffsetPosition.y, z: - cameraOffsetPosition.z, w: 1 };
+                    let offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
+                    const turn = new THREE.Quaternion()
+                    turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+                    //offsetRotation=offsetRotation.dot(turn)
+                    //offsetRotation.multiply(turn)
+                    //cameraOffsetRotation.copy(offsetRotation)
+                    //renderer.xr.setReferenceSpace(teleportSpaceOffset);
+                    
+
+                    const transform = new XRRigidTransform(offsetPosition, nullRotation);
+                    const doRotate = new XRRigidTransform(nullPosition, offsetRotation);
+                    const t2 = baseReferenceSpace.getOffsetReferenceSpace(doRotate)
+                    const t3 = t2.getOffsetReferenceSpace(transform);
+                    renderer.xr.setReferenceSpace(t3);
+
+                    
 
                 }
 
@@ -258,10 +295,10 @@
                 const intersects_mesh = raycaster.intersectObjects(allMeshes);
                 if (intersects_mesh.length > 0) {
                     //displayCaption(intersects_mesh[0].object)
-                    TARGET_OBJECT=intersects_mesh[0].object
+                    TARGET_OBJECT = intersects_mesh[0].object
                 } else {
                     //hideAllCaptions()
-                    TARGET_OBJECT=null
+                    TARGET_OBJECT = null
                 }
 
                 const intersects = raycaster.intersectObjects([floor]);
@@ -282,9 +319,9 @@
                 //check for intersects with meshs
                 const intersects_mesh = raycaster.intersectObjects(allMeshes);
                 if (intersects_mesh.length > 0) {
-                    displayCaption(intersects_mesh[0].object)
+                    TARGET_OBJECT = intersects_mesh[0].object
                 } else {
-                    hideAllCaptions()
+                    TARGET_OBJECT = null
                 }
 
                 const intersects = raycaster.intersectObjects([floor]);
@@ -344,12 +381,82 @@
                             }
                         }*/
 
+                        //snap turn
+                        //console.log(data.axes)
+                        //axis [touchpad X, touchpad Y, joystick X, joystick Y]
+                        if (mode == "NONE" && data.axes[2] > 0.75) {
+                            console.log("start turning right")
+                            mode = "SNAPTURN_RIGHT_"+data.handedness
+                        }
+
+                        if (mode == "NONE" && data.axes[2] < -0.75) {
+                            console.log("starting left turn")
+                            mode = "SNAPTURN_LEFT_"+data.handedness
+                        }
+
+                        if (mode == "SNAPTURN_RIGHT_"+data.handedness && data.axes[2] < 0.05) {
+                            //do snapturn
+                            console.log("turning right")
+
+                            let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
+                            let nullRotation = new THREE.Quaternion()
+                            const offsetPosition = { x: - cameraOffsetPosition.x, y: - cameraOffsetPosition.y, z: - cameraOffsetPosition.z, w: 1 };
+                            let offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
+                            const turn = new THREE.Quaternion()
+                            turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+                            //offsetRotation=offsetRotation.dot(turn)
+                            offsetRotation.multiply(turn)
+                            cameraOffsetRotation.copy(offsetRotation)
+                            const transform = new XRRigidTransform(offsetPosition, nullRotation);
+                            const doRotate = new XRRigidTransform(nullPosition, offsetRotation);
+                            const t2 = baseReferenceSpace.getOffsetReferenceSpace(doRotate)
+                            const t3 = t2.getOffsetReferenceSpace(transform);
+                            renderer.xr.setReferenceSpace(t3);
+
+                            mode = "NONE"
+                        }
+
+                        if (mode == "SNAPTURN_LEFT_"+data.handedness && data.axes[2] > -0.05) {
+                            //do snapturn
+                            console.log("turning left")
+
+                            let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
+                            let nullRotation = new THREE.Quaternion()
+                            const offsetPosition = { x: - cameraOffsetPosition.x, y: - cameraOffsetPosition.y, z: - cameraOffsetPosition.z, w: 1 };
+                            let offsetRotation = new THREE.Quaternion().copy(cameraOffsetRotation);
+                            const turn = new THREE.Quaternion()
+                            turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 4);
+                            //offsetRotation=offsetRotation.dot(turn)
+                            offsetRotation.multiply(turn)
+                            cameraOffsetRotation.copy(offsetRotation)
+                            const transform = new XRRigidTransform(offsetPosition, nullRotation);
+                            const doRotate = new XRRigidTransform(nullPosition, offsetRotation);
+                            const t2 = baseReferenceSpace.getOffsetReferenceSpace(doRotate)
+                            const t3 = t2.getOffsetReferenceSpace(transform);
+                            renderer.xr.setReferenceSpace(t3);
+
+                            mode = "NONE"
+                        }
+
+
+
 
                         //button 4 (right A) will start recording
                         if (data.handedness == "right" && data.buttons[4] && mode == "NONE") {
                             console.log("start recording")
-                            startRecording()
-                            mode = "RECORDING"
+                            //check if we want to delete
+                            tempMatrix.identity().extractRotation(controller.matrixWorld);
+                            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                            raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                            //check for intersects with meshs
+                            const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                            if (intersects_mesh.length > 0) {
+                                console.log("deleting")
+                                mode = "DELETING"
+                            } else {
+                                startRecording()
+                                mode = "RECORDING"
+                            }
                         } else {
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RECORDING") {
                                 console.log("stop recording")
@@ -357,24 +464,49 @@
                                 mode = "NONE"
                             }
 
+                            if (data.handedness == "right" && data.buttons[4] == 0 && mode == "DELETING") {
+
+                                //check if we want to delete
+                                tempMatrix.identity().extractRotation(controller.matrixWorld);
+                                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                                raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                                //check for intersects with meshs
+                                const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                                if (intersects_mesh.length > 0) {
+                                    //displayCaption(intersects_mesh[0].object)
+                                    let objectToDelete = intersects_mesh[0].object
+                                    //delete object
+                                    let indexToDelete = allMeshes.indexOf(objectToDelete)
+                                    if (indexToDelete >= 0) {
+                                        allMeshes.splice(indexToDelete, 1)
+                                        if (objectToDelete.userData["caption"]) {
+                                            scene.remove(objectToDelete.userData["caption"])
+                                            objectToDelete.userData["caption"] = null
+                                        }
+                                        scene.remove(objectToDelete)
+                                    } else {
+                                        console.log("this should never happen!")
+                                    }
+                                    console.log("deleted")
+                                } else {
+                                    console.log("not deleting")
+                                }
+                                mode = "NONE"
+                            }
+
+
+                            //button map
+                            ///???? = B
+                            //4 == A
+                            //3 = ?grip
+                            //2=touchpad
+                            //1 = joystick
+                            //0 = trigger
+
+
+                            ///store this frames data to compate with in the next frame
+                            prevGamePads.set(source, data);
                         }
-
-
-                        ///???? = B
-                        //4 == A
-                        //3 = ?grip
-                        //2=touchpad
-                        //1 = joystick
-                        //0 = trigger
-
-
-
-
-
-
-
-                        ///store this frames data to compate with in the next frame
-                        prevGamePads.set(source, data);
                     }
                 }
             }
@@ -430,39 +562,21 @@
             } else {
                 console.log('navigator.getUserMedia not present');
             }
-
-
-
-
             //camera position?
             const position = new THREE.Vector3();
             const rotation = new THREE.Quaternion();
             const scale = new THREE.Vector3();
-
-
             // the following line extracts the position, rotation and scale in world space
             camera.matrixWorld.decompose(position, rotation, scale);
-
             const euler = new THREE.Euler();
             euler.setFromQuaternion(rotation, "YZX")
-
-            console.log("camera mw", camera.matrixWorld, position, rotation, scale, euler)
-
-            //const camera_direction=camera.getWorldDirection()
-            //let r=Math.atan2(camera_direction.x,camera_direction.z)
-            //console.log("camera direction",camera_direction,r)
             let r = euler.y
-
-
+            //use this to place object
             nextCubePosition = new THREE.Vector3().copy(position);
             nextCubePosition.y = 1
             nextCubePosition.x -= 2 * Math.sin(r)
             nextCubePosition.z -= 2 * Math.cos(r)
-
-
-
             nextCubeRotation = r
-            console.log("rotation", nextCubeRotation)
 
             placeholderCube = addPlaceholder(nextCubePosition, nextCubeRotation, "#00ff00");
 
@@ -479,6 +593,12 @@
 
             //send blob to server
             let fd = new FormData();
+            if(aspect_ratio=="portrait"){
+              fd.set("height",768)
+            }else if(aspect_ratio=="landscape"){
+              fd.set("width",768)
+            }
+            
             fd.append("audio_data", superBuffer);
 
             //fetch url from /tts endpoint
@@ -527,7 +647,16 @@
             });
 
             //let geometry = new THREE.BoxGeometry(1, 1, 1, 100, 100, 100);
-            let geometry = new THREE.PlaneGeometry(1, 1, 100, 100);
+            let geometry
+            if(aspect_ratio=="portrait"){
+              geometry = new THREE.PlaneGeometry(1, 1.5, 100, 100);
+            }else if(aspect_ratio=="landscape"){
+              geometry = new THREE.PlaneGeometry(1.5, 1, 100, 100);
+            }else{
+              //square
+              geometry = new THREE.PlaneGeometry(1, 1, 100, 100);
+            }
+            
             let mesh = new THREE.Mesh(geometry, material);
             scene.add(mesh);
             //mesh.rotation.y = rotation - Math.PI / 2;
@@ -628,62 +757,62 @@
             saveData = data
         }
 
-        function displayCaption(parentMesh){
-            
-            
-            if(parentMesh.userData["caption"]){
+        function displayCaption(parentMesh) {
+
+
+            if (parentMesh.userData["caption"]) {
                 scene.remove(parentMesh.userData["caption"])
-                parentMesh.userData["caption"]=null
+                parentMesh.userData["caption"] = null
                 return
             }
-            
-            
+
+
             let prompt = parentMesh.userData["prompt"]
 
 
 
-            
+
             loader.load('fonts/helvetiker_regular.typeface.json', function (font) {
 
                 const color = 0x000000;
-                const scale=0.002
+                const scale = 0.002
 
-                const matDark = new THREE.LineBasicMaterial( {
-                  color: color,
-                  side: THREE.DoubleSide
-                } );
+                const matDark = new THREE.LineBasicMaterial({
+                    color: color,
+                    side: THREE.DoubleSide
+                });
 
-                const matLite = new THREE.MeshBasicMaterial( {
-                  color: color,
-                  transparent: true,
-                  opacity: 0.4,
-                  side: THREE.DoubleSide
-                } );
+                const matLite = new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: 0.4,
+                    side: THREE.DoubleSide
+                });
 
                 const message = prompt;
 
-                const shapes = font.generateShapes( message, 100 );
+                const shapes = font.generateShapes(message, 100);
 
-                const geometry = new THREE.ShapeGeometry( shapes );
+                const geometry = new THREE.ShapeGeometry(shapes);
 
                 geometry.computeBoundingBox();
 
-                const xMid = - 0.5 * ( geometry.boundingBox.max.x - geometry.boundingBox.min.x );
+                const xMid = - 0.5 * (geometry.boundingBox.max.x - geometry.boundingBox.min.x);
 
-                geometry.translate( xMid, 0, 0 );
+                geometry.translate(xMid, 0, 0);
 
                 // make shape ( N.B. edge view not visible )
 
-                const text = new THREE.Mesh( geometry, matLite );
-                scene.add( text );
+                const text = new THREE.Mesh(geometry, matLite);
+                scene.add(text);
 
                 text.position.copy(parentMesh.position)
-                text.position.y+=1
+                text.position.y += 1
                 text.rotation.copy(parentMesh.rotation)
-                text.scale.set(scale,scale,scale)
+                text.scale.set(scale, scale, scale)
 
                 //add to parent user data
-                parentMesh.userData["caption"]=text
+                parentMesh.userData["caption"] = text
 
             });
 

@@ -65,6 +65,8 @@
         let allCaptions = []
         var loader = new FontLoader();
 
+        let aspect_ratio="portrait"
+
         //stuff
 
         let cameraOffsetPosition = new THREE.Vector3()
@@ -152,13 +154,13 @@
 
                     cameraOffsetPosition.copy(offsetPosition)*/
 
-                    if(INTERSECTION){
-                        cameraOffsetPosition.copy(INTERSECTION)
-                    }else{
-                        console.log("this hsould never happen",INTERSECTION.point)
-                    }
+                    let delta=new THREE.Vector3().copy(INTERSECTION)
+                    delta.addScaledVector(camera.position,-1)
+                    delta.y=0
+                    //cameraOffsetPosition.copy(INTERSECTION)
+                    cameraOffsetPosition.add(delta)
+                    console.log(camera.position,INTERSECTION)
                     
-                    console.log("huH?",INTERSECTION,INTERSECTION.point,cameraOffsetPosition)
 
                     let nullPosition = { x: 0, y: 0, z: 0, w: 1 };
                     let nullRotation = new THREE.Quaternion()
@@ -317,9 +319,9 @@
                 //check for intersects with meshs
                 const intersects_mesh = raycaster.intersectObjects(allMeshes);
                 if (intersects_mesh.length > 0) {
-                    displayCaption(intersects_mesh[0].object)
+                    TARGET_OBJECT = intersects_mesh[0].object
                 } else {
-                    hideAllCaptions()
+                    TARGET_OBJECT = null
                 }
 
                 const intersects = raycaster.intersectObjects([floor]);
@@ -384,15 +386,15 @@
                         //axis [touchpad X, touchpad Y, joystick X, joystick Y]
                         if (mode == "NONE" && data.axes[2] > 0.75) {
                             console.log("start turning right")
-                            mode = "SNAPTURN_RIGHT"
+                            mode = "SNAPTURN_RIGHT_"+data.handedness
                         }
 
                         if (mode == "NONE" && data.axes[2] < -0.75) {
                             console.log("starting left turn")
-                            mode = "SNAPTURN_LEFT"
+                            mode = "SNAPTURN_LEFT_"+data.handedness
                         }
 
-                        if (mode == "SNAPTURN_RIGHT" && data.axes[2] < 0.05) {
+                        if (mode == "SNAPTURN_RIGHT_"+data.handedness && data.axes[2] < 0.05) {
                             //do snapturn
                             console.log("turning right")
 
@@ -414,7 +416,7 @@
                             mode = "NONE"
                         }
 
-                        if (mode == "SNAPTURN_LEFT" && data.axes[2] > -0.05) {
+                        if (mode == "SNAPTURN_LEFT_"+data.handedness && data.axes[2] > -0.05) {
                             //do snapturn
                             console.log("turning left")
 
@@ -591,6 +593,12 @@
 
             //send blob to server
             let fd = new FormData();
+            if(aspect_ratio=="portrait"){
+              fd.set("height",768)
+            }else if(aspect_ratio=="landscape"){
+              fd.set("width",768)
+            }
+            
             fd.append("audio_data", superBuffer);
 
             //fetch url from /tts endpoint
@@ -639,7 +647,16 @@
             });
 
             //let geometry = new THREE.BoxGeometry(1, 1, 1, 100, 100, 100);
-            let geometry = new THREE.PlaneGeometry(1, 1, 100, 100);
+            let geometry
+            if(aspect_ratio=="portrait"){
+              geometry = new THREE.PlaneGeometry(1, 1.5, 100, 100);
+            }else if(aspect_ratio=="landscape"){
+              geometry = new THREE.PlaneGeometry(1.5, 1, 100, 100);
+            }else{
+              //square
+              geometry = new THREE.PlaneGeometry(1, 1, 100, 100);
+            }
+            
             let mesh = new THREE.Mesh(geometry, material);
             scene.add(mesh);
             //mesh.rotation.y = rotation - Math.PI / 2;
