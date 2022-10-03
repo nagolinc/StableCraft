@@ -37,7 +37,7 @@ import random
 import re
 import hashlib
 
-MIN_PROMPT_LENGTH=8
+MIN_PROMPT_LENGTH=12
 
 
 def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30, no_fp16=False):
@@ -158,7 +158,7 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
 
   @app.route("/")
   def hello_world():
-      return "<p>Hello, World!</p>"
+      return "<p>Hello, World!</p><br><a href='static/examples/whisper.html'>StableCraft</a>"
 
 
   @app.route("/putAudio", methods=['POST'])
