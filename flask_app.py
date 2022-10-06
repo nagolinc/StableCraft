@@ -238,9 +238,14 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='launch StableCraft')
   parser.add_argument('--diffusion_model', default="CompVis/stable-diffusion-v1-4")
   parser.add_argument('--no_fp16', action='store_true')
+  parser.add_argument('--num_inference_steps', type=int, default=30)
   args = parser.parse_args()
   print("args",args)
-  app=setup(diffusion_model=args.diffusion_model,no_fp16=args.no_fp16)
+  app=setup(
+    diffusion_model=args.diffusion_model,
+    no_fp16=args.no_fp16,
+    num_inference_steps=args.num_inference_steps
+  )
   app.run()
 
 
