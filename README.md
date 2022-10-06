@@ -14,3 +14,5 @@ To run, you need to start the server: flask_app.py and then go to the page <serv
 The easiest way is probably just with [colab](https://colab.research.google.com/github/nagolinc/StableCraft/blob/main/StableCraft.ipynb)
 
 ![screenshot](screenshot.png)
+
+Check out the [demo](https://nagolinc.github.io/StableCraft/sampleProject/examples/whisper.html)
