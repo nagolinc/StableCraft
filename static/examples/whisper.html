@@ -87,6 +87,7 @@
             2: "delete",
             3: "recreate",
             4: "change aspect ratio",
+            5: "move object",
         }
         let ACTION_MODE_TO_INDEX = {}
         for (var i in ACTION_MODES) {
@@ -94,7 +95,7 @@
         }
 
         let ACTION_MODE = 0//create
-        let NUM_ACTION_MODES = 5
+        let NUM_ACTION_MODES = 6
 
         init();
         animate();
@@ -355,9 +356,7 @@
                 const intersects = raycaster.intersectObjects([floor]);
 
                 if (intersects.length > 0) {
-
                     INTERSECTION = intersects[0].point;
-
                 }
 
             }
@@ -377,6 +376,10 @@
         const prevGamePads = new Map();
         let mode = "NONE"
         let lhs_mode = "NONE"
+        //move object
+        let controller_move_start
+        let object_move_start
+        let objectToMove
 
 
         function dollyMove() {
@@ -403,7 +406,6 @@
                         } else {
                             controller = controller2
                         }
-
 
                         const old = prevGamePads.get(source);
                         const data = {
@@ -456,7 +458,7 @@
                             ACTION_MODE = (ACTION_MODE + 1) % NUM_ACTION_MODES
 
                             console.log('setting gui', ACTION_MODE)
-                            set_gui_text(controller, ACTION_MODE)
+                            set_gui_text(controller, ACTION_MODES[ACTION_MODE])
 
                             lhs_mode = "CHANGE_ACTION_MODE"
                         }
@@ -520,10 +522,34 @@
 
                                 console.log("new aspect ratio", aspect_ratio)
 
+                                set_gui_text(controller, aspect_ratio)
+
 
                                 //todo: display this somewhere
 
                                 mode = "CHANGE_ASPECT_RATIO"
+
+                            }
+
+                            if (ACTION_MODES[ACTION_MODE] == "move object") {
+
+                                //check if we want to delete
+                                tempMatrix.identity().extractRotation(controller.matrixWorld);
+                                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                                raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                                //check for intersects with meshs
+                                const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                                if (intersects_mesh.length > 0) {
+                                    console.log("moving")
+                                    objectToMove = intersects_mesh[0].object
+                                    console.log("about to die", controller, objectToMove)
+                                    controller.attach(objectToMove);
+                                    mode = "MOVE_OBJECT"
+                                } else {
+                                    console.log("nothing to move!")
+                                }
+
+
 
                             }
 
@@ -610,7 +636,44 @@
 
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "CHANGE_ASPECT_RATIO") {
 
+                                set_gui_text(controller, "")
+
                                 console.log("changed aspect ratio")
+                                mode = "NONE"
+
+                            }
+
+                            if (data.handedness == "right" && data.buttons[4] == 0 && mode == "MOVE_OBJECT") {
+
+                                scene.attach(objectToMove)
+
+                                //todo save new position and rotation
+                                let key = objectToMove.userData["key"]
+                                console.log("saving new position of object with key", key)
+                                let t = 0
+                                if (key) {
+                                    //find in saveData.objects
+                                    for (var j in saveData.objects) {
+                                        if (saveData.objects[j]["key"] == key) {
+                                            saveData.objects[j]["xyz"]=[objectToMove.position.x, objectToMove.position.y, objectToMove.position.z],
+                                            saveData.objects[j]["rotation"]= objectToMove.rotation.y,
+                                            saveData.objects[j]["rotation_xyz"]= [objectToMove.rotation.x, objectToMove.rotation.y, objectToMove.rotation.z],
+                                            t = 1
+                                            break
+                                        }
+                                    }
+                                    if (t == 0) {
+                                        console.log("key", key, "not found!")
+                                    } else {
+                                        console.log("saving")
+                                        if (savePath != "NONE") {
+                                            doSave()
+                                        }
+                                    }
+
+                                }
+
+                                console.log("moved object")
                                 mode = "NONE"
 
                             }
@@ -756,7 +819,7 @@
         }
 
 
-        function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key) {
+        function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz) {
             let imgPath = "../samples/" + data[1]
             let dPath = "../samples/" + data[2]
             const textureLoader = new THREE.TextureLoader();
@@ -792,6 +855,11 @@
             //mesh.rotation.y = rotation - Math.PI / 2;
             mesh.rotation.y = rotation;
             mesh.position.copy(position);
+            if (rotation_xyz) {
+                mesh.rotation.x = rotation_xyz[0];
+                mesh.rotation.y = rotation_xyz[1];
+                mesh.rotation.z = rotation_xyz[2];
+            }
 
             //save prompt to userdata
             mesh.userData["prompt"] = data[0]
@@ -811,6 +879,7 @@
                     "disp": data[2],
                     "xyz": [mesh.position.x, mesh.position.y, mesh.position.z],
                     "rotation": mesh.rotation.y,
+                    "rotation_xyz": [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
                     "aspect_ratio": thisAspectRatio,
                 }
 
@@ -891,7 +960,7 @@
                 console.log("adding object", d, position, rotation, thisAspectRatio, key)
 
 
-                add3dImage(d, position, rotation, false, thisAspectRatio, key)
+                add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz)
             }
 
 
@@ -960,7 +1029,7 @@
         }
 
 
-        function set_gui_text(parentMesh, action_mode) {
+        function set_gui_text(parentMesh, message) {
 
 
 
@@ -969,9 +1038,6 @@
                 scene.remove(parentMesh.userData["caption"])
                 parentMesh.userData["caption"] = null //this line isn't strictly necessary
             }
-
-
-            let prompt = ACTION_MODES[action_mode]
 
             loader.load('fonts/helvetiker_regular.typeface.json', function (font) {
 
@@ -989,8 +1055,6 @@
                     opacity: 0.4,
                     side: THREE.DoubleSide
                 });
-
-                const message = prompt;
 
                 const shapes = font.generateShapes(message, 100);
 
