@@ -30,6 +30,7 @@
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
         import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+        import { TWEEN } from 'three/addons/libs/tween.module.min.js'
 
         let camera, scene, raycaster, renderer;
         let controller1, controller2;
@@ -309,7 +310,10 @@
 
         }
 
-        function render() {
+        function render(time) {
+
+            //console.log("here",time)
+            //TWEEN.update(time)
 
             INTERSECTION = undefined;
 
@@ -370,6 +374,9 @@
             //poll for controllers
             dollyMove();
 
+
+            TWEEN.update(time)
+
         }
 
         //game pad stuff
@@ -424,17 +431,17 @@
                         //snap turn
                         //console.log(data.axes)
                         //axis [touchpad X, touchpad Y, joystick X, joystick Y]
-                        if (mode == "NONE" && data.axes[2] > 0.75 && data.handedness=="right") {
+                        if (mode == "NONE" && data.axes[2] > 0.75 && data.handedness == "right") {
                             console.log("start turning right")
                             mode = "SNAPTURN_RIGHT_" + data.handedness
                         }
 
-                        if (mode == "NONE" && data.axes[2] < -0.75 && data.handedness=="right") {
+                        if (mode == "NONE" && data.axes[2] < -0.75 && data.handedness == "right") {
                             console.log("starting left turn")
                             mode = "SNAPTURN_LEFT_" + data.handedness
                         }
 
-                        if (mode == "SNAPTURN_RIGHT_" + data.handedness && data.axes[2] < 0.05 && data.handedness=="right"){
+                        if (mode == "SNAPTURN_RIGHT_" + data.handedness && data.axes[2] < 0.05 && data.handedness == "right") {
                             //do snapturn
                             console.log("turning right")
                             let turnAmount = Math.PI / 4
@@ -442,7 +449,7 @@
                             mode = "NONE"
                         }
 
-                        if (mode == "SNAPTURN_LEFT_" + data.handedness && data.axes[2] > -0.05 && data.handedness=="right") {
+                        if (mode == "SNAPTURN_LEFT_" + data.handedness && data.axes[2] > -0.05 && data.handedness == "right") {
                             //do snapturn
                             console.log("turning left")
                             let turnAmount = -Math.PI / 4
@@ -455,37 +462,72 @@
                         //snap turn
                         //console.log(data.axes)
                         //axis [touchpad X, touchpad Y, joystick X, joystick Y]
-                        if (mode == "NONE" && data.axes[2] > 0.75 && data.handedness=="left") {
+                        if (mode == "NONE" && data.axes[2] > 0.75 && data.handedness == "left") {
                             console.log("change action mode plus")
                             mode = "CHANGE_ACTION_MODE_PLUS"
                         }
 
-                        if (mode == "NONE" && data.axes[2] < -0.75 && data.handedness=="left") {
+                        if (mode == "NONE" && data.axes[2] < -0.75 && data.handedness == "left") {
                             console.log("change action mode plus")
                             mode = "CHANGE_ACTION_MODE_MINUS"
                         }
 
-                        if (mode == "CHANGE_ACTION_MODE_PLUS"  && data.axes[2] < 0.05 && data.handedness=="left") {
+                        if (mode == "CHANGE_ACTION_MODE_PLUS" && data.axes[2] < 0.05 && data.handedness == "left") {
                             //change mode
                             ACTION_MODE = (ACTION_MODE + 1) % NUM_ACTION_MODES
 
                             console.log('setting gui', ACTION_MODE)
                             set_gui_text(controller, ACTION_MODES[ACTION_MODE])
 
-                            console.log("changed action mode",ACTION_MODE)
+                            console.log("changed action mode", ACTION_MODE)
                             mode = "NONE"
                         }
 
-                        if (mode == "CHANGE_ACTION_MODE_MINUS"  && data.axes[2] > -0.05 && data.handedness=="left") {
+                        if (mode == "CHANGE_ACTION_MODE_MINUS" && data.axes[2] > -0.05 && data.handedness == "left") {
                             //change mode
-                            ACTION_MODE = (ACTION_MODE - 1+NUM_ACTION_MODES) % NUM_ACTION_MODES
+                            ACTION_MODE = (ACTION_MODE - 1 + NUM_ACTION_MODES) % NUM_ACTION_MODES
 
                             console.log('setting gui', ACTION_MODE)
                             set_gui_text(controller, ACTION_MODES[ACTION_MODE])
 
-                            console.log("changed action mode",ACTION_MODE)
+                            console.log("changed action mode", ACTION_MODE)
                             mode = "NONE"
                         }
+
+                        //using right touchpad
+                        if (mode == "NONE" && data.axes[1] > 0.75 && data.handedness == "right") {
+                            console.log("change action mode plus")
+                            mode = "CHANGE_ACTION_MODE_PLUS_r1"
+                        }
+
+                        if (mode == "NONE" && data.axes[1] < -0.75 && data.handedness == "right") {
+                            console.log("change action mode plus")
+                            mode = "CHANGE_ACTION_MODE_MINUS_r1"
+                        }
+
+                        if (mode == "CHANGE_ACTION_MODE_PLUS_r1" && data.axes[1] < 0.05 && data.handedness == "right") {
+                            //change mode
+                            ACTION_MODE = (ACTION_MODE + 1) % NUM_ACTION_MODES
+
+                            console.log('setting gui', ACTION_MODE)
+                            set_gui_text(controller, ACTION_MODES[ACTION_MODE])
+
+                            console.log("changed action mode", ACTION_MODE)
+                            mode = "NONE"
+                        }
+
+                        if (mode == "CHANGE_ACTION_MODE_MINUS_r1" && data.axes[1] > -0.05 && data.handedness == "right") {
+                            //change mode
+                            ACTION_MODE = (ACTION_MODE - 1 + NUM_ACTION_MODES) % NUM_ACTION_MODES
+
+                            console.log('setting gui', ACTION_MODE)
+                            set_gui_text(controller, ACTION_MODES[ACTION_MODE])
+
+                            console.log("changed action mode", ACTION_MODE)
+                            mode = "NONE"
+                        }
+
+
 
 
                         //button 4 (left a) will change action mode
@@ -813,7 +855,7 @@
             audio.src =
                 window.URL.createObjectURL(superBuffer);
 
-            let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa");
+            let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
             console.log("added placeholder")
 
             //send blob to server
@@ -854,7 +896,7 @@
 
 
 
-            let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa");
+            let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa",{ 'r': 1, "g": 0, "b": 0 }, 30);
 
             //send prompt to server
             let fd = new FormData();
@@ -888,7 +930,14 @@
             console.log("removing object", objectToRecreate)
             let indexToDelete = allMeshes.indexOf(objectToRecreate)
             if (indexToDelete >= 0) {
+
+                //delete caption
+                if (objectToRecreate.userData["caption"]) {
+                    scene.remove(objectToRecreate.userData["caption"])
+                    objectToRecreate.userData["caption"] = null
+                }
                 scene.remove(objectToRecreate)
+
                 allMeshes.splice(indexToDelete, 1)
             } else {
                 console.log("error, could not remove object!")
@@ -1017,15 +1066,23 @@
             return mesh
         }
 
-        function addPlaceholder(position, rotation, color) {
+        function addPlaceholder(position, rotation, color, rgb2, time) {
             let material = new THREE.MeshStandardMaterial({
                 color: color,
                 side: THREE.DoubleSide
             });
 
+
+
             let geometry = new THREE.BoxGeometry(1, 1, 1, 100, 100, 100);
             let mesh = new THREE.Mesh(geometry, material);
             scene.add(mesh);
+
+
+            if (rgb2) {
+                new TWEEN.Tween(mesh.material.color).to({ r: rgb2.r, g: rgb2.g, b: rgb2.b }, time * 1000).start()
+                //new TWEEN.Tween(mesh.material.color).to({r: 1, g: 0, b: 0 }, 2000).start()
+            }
 
             mesh.position.copy(position);
             mesh.rotation.y = rotation - Math.PI;
@@ -1162,7 +1219,7 @@
             loader.load('fonts/helvetiker_regular.typeface.json', function (font) {
 
                 const color = 0x000000;
-                const scale = 0.002
+                const scale = 0.001
 
                 const matDark = new THREE.LineBasicMaterial({
                     color: color,
