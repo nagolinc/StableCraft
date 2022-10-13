@@ -212,6 +212,43 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
       depth_map.save(depthPath)
 
       return jsonify([prompt,imgName,depthName])
+
+  @app.route("/genPrompt", methods=['POST'])
+  def genPrompt():
+      global base_count
+      prompt = request.values.get('prompt')
+      width=request.values.get("width",default=512, type=int)
+      height=request.values.get("height",default=512, type=int)
+      seed=request.values.get("seed",default=-1, type=int)
+      print("img properties",width,height,seed)
+      
+      if seed==-1:
+        seed=random.randint(0,10**9)
+      
+      h=hashlib.sha224(("%s --seed %d"%(prompt,seed)).encode('utf-8')).hexdigest()
+
+      with autocast("cuda"):
+          generator = torch.Generator("cuda").manual_seed(seed)
+          img = pipe([prompt],
+            guidance_scale = 7.5,
+            num_inference_steps=num_inference_steps,
+            width=width,
+            height=height,
+            generator=generator
+            )["sample"][0]
+          imgName="%s.png"%h
+          imgPath=os.path.join(sample_path, imgName)
+          base_count+=1
+          img.save(imgPath)
+
+      depth_map=process_image(img)
+      depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius = 2))
+
+      depthName="%s_d.png"%h
+      depthPath=os.path.join(sample_path, depthName)
+      depth_map.save(depthPath)
+
+      return jsonify([prompt,imgName,depthName])
   
   @app.route("/saveData", methods=['POST'])
   def saveData():
