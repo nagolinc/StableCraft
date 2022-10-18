@@ -198,7 +198,7 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
             width=width,
             height=height,
             generator=generator
-            )["sample"][0]
+            ).images[0]
           imgName="%s.png"%h
           imgPath=os.path.join(sample_path, imgName)
           base_count+=1
@@ -235,7 +235,7 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
             width=width,
             height=height,
             generator=generator
-            )["sample"][0]
+            ).images[0]
           imgName="%s.png"%h
           imgPath=os.path.join(sample_path, imgName)
           base_count+=1
