@@ -1024,19 +1024,19 @@
             let nextCubeRotation = objectToRecreate.rotation.y
             let nextCubeRotation_xyz = [objectToRecreate.rotation.x, objectToRecreate.rotation.y, objectToRecreate.rotation.z]
 
-            
+
             //get 
             const euler = new THREE.Euler();
             euler.setFromQuaternion(objectToRecreate.quaternion, "YZX")
 
             //offset postion
-            let offsetAmt=1
-            let offsetAngle=Math.PI/2
-            let offsetX=Math.sin(euler.y+offsetAngle)*offsetAmt
-            let offsetZ=Math.cos(euler.y+offsetAngle)*offsetAmt
+            let offsetAmt = 1
+            let offsetAngle = Math.PI / 2
+            let offsetX = Math.sin(euler.y + offsetAngle) * offsetAmt
+            let offsetZ = Math.cos(euler.y + offsetAngle) * offsetAmt
 
-            nextCubePosition.x+=offsetX
-            nextCubePosition.z+=offsetZ
+            nextCubePosition.x += offsetX
+            nextCubePosition.z += offsetZ
 
 
             let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
@@ -1359,12 +1359,18 @@
 
 
 
-            if (parentMesh.userData["caption"]) {
-                scene.remove(parentMesh.userData["caption"])
-                parentMesh.userData["caption"] = null //this line isn't strictly necessary
-            }
+
 
             loader.load('fonts/helvetiker_regular.typeface.json', function (font) {
+
+
+                //move inside to fix race condition?
+                if (parentMesh.userData["caption"]) {
+                    scene.remove(parentMesh.userData["caption"])
+                    parentMesh.userData["caption"] = null //this line isn't strictly necessary
+                }
+
+
 
                 const color = 0x000000;
                 const scale = 0.001
