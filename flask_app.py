@@ -65,12 +65,21 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
   def safety_checker(images, clip_input):
     return images, False
 
+  from diffusers import LMSDiscreteScheduler
+
+  lms = LMSDiscreteScheduler(
+      beta_start=0.00085, 
+      beta_end=0.012, 
+      beta_schedule="scaled_linear"
+  )
+
   if no_fp16:
     # make sure you're logged in with `huggingface-cli login`
     pipe = StableDiffusionPipeline.from_pretrained(
         diffusion_model,
         torch_dtype=torch.float16, 
         use_auth_token=True,
+        scheduler=lms,
         cache_dir="./AI/StableDiffusion")  
   else:
     # make sure you're logged in with `huggingface-cli login`
@@ -79,6 +88,7 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
         revision="fp16", 
         torch_dtype=torch.float16, 
         use_auth_token=True,
+        scheduler=lms,
         cache_dir="./AI/StableDiffusion")  
 
   pipe.safety_checker=safety_checker
