@@ -85,10 +85,11 @@
         let ACTION_MODES = {
             0: "",
             1: "create",
-            2: "delete",
-            3: "recreate",
-            4: "aspect ratio",
-            5: "move",
+            2: "recreate",
+            3: "duplicate",
+            4: "delete",
+            5: "aspect ratio",
+            6: "move",
         }
         let ACTION_MODE_TO_INDEX = {}
         for (var i in ACTION_MODES) {
@@ -96,7 +97,7 @@
         }
 
         let ACTION_MODE = 0//create
-        let NUM_ACTION_MODES = 6
+        let NUM_ACTION_MODES = 7
 
         init();
         animate();
@@ -595,6 +596,22 @@
                                 }
                             }
 
+
+                            if (ACTION_MODES[ACTION_MODE] == "duplicate") {
+                                //check if we want to delete
+                                tempMatrix.identity().extractRotation(controller.matrixWorld);
+                                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                                raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                                //check for intersects with meshs
+                                const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                                if (intersects_mesh.length > 0) {
+                                    console.log("duplicating")
+                                    mode = "DUPLICATING"
+                                } else {
+                                    console.log("nothing to duplicate!")
+                                }
+                            }
+
                             if (ACTION_MODES[ACTION_MODE] == "aspect ratio") {
                                 which_aspect_ratio = (which_aspect_ratio + 1) % num_aspect_ratios
                                 aspect_ratio = aspect_ratios[which_aspect_ratio]
@@ -710,6 +727,28 @@
                                     console.log("recreating")
                                 } else {
                                     console.log("not recreating")
+                                }
+                                mode = "NONE"
+                            }
+
+
+
+                            if (data.handedness == "right" && data.buttons[4] == 0 && mode == "DUPLICATING") {
+
+                                //check if we want to RECREATe
+                                tempMatrix.identity().extractRotation(controller.matrixWorld);
+                                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                                raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                                //check for intersects with meshs
+                                const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                                if (intersects_mesh.length > 0) {
+                                    //displayCaption(intersects_mesh[0].object)
+                                    let objectToDelete = intersects_mesh[0].object
+                                    //todo: implement recreating
+                                    duplicateObject(objectToDelete)
+                                    console.log("duplicating")
+                                } else {
+                                    console.log("not dupliating")
                                 }
                                 mode = "NONE"
                             }
@@ -896,7 +935,7 @@
 
 
 
-            let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa",{ 'r': 1, "g": 0, "b": 0 }, 30);
+            let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
 
             //send prompt to server
             let fd = new FormData();
@@ -969,6 +1008,115 @@
                     }
                 }
             }
+
+        }
+
+
+
+        async function duplicateObject(objectToRecreate) {
+
+            //first let's find the save data
+            let key = objectToRecreate.userData["key"]
+
+            let prompt = objectToRecreate.userData["prompt"]
+            let thisAspectRatio = objectToRecreate.userData["aspect_ratio"]
+            let nextCubePosition = objectToRecreate.position.clone()
+            let nextCubeRotation = objectToRecreate.rotation.y
+            let nextCubeRotation_xyz = [objectToRecreate.rotation.x, objectToRecreate.rotation.y, objectToRecreate.rotation.z]
+
+            
+            //get 
+            const euler = new THREE.Euler();
+            euler.setFromQuaternion(objectToRecreate.quaternion, "YZX")
+
+            //offset postion
+            let offsetAmt=1
+            let offsetAngle=Math.PI/2
+            let offsetX=Math.sin(euler.y+offsetAngle)*offsetAmt
+            let offsetZ=Math.cos(euler.y+offsetAngle)*offsetAmt
+
+            nextCubePosition.x+=offsetX
+            nextCubePosition.z+=offsetZ
+
+
+            let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
+
+            //send prompt to server
+            let fd = new FormData();
+            fd.set("prompt", prompt)
+            if (thisAspectRatio == "portrait") {
+                fd.set("height", 768)
+            } else if (thisAspectRatio == "landscape") {
+                fd.set("width", 768)
+            }
+
+            //fetch url from /tts endpoint
+            let response = await fetch("/genPrompt", {
+                body: fd,
+                method: "POST"
+            })
+
+            if (response.status !== 200) {
+                // You can do your error handling here
+                console.log("Failed recreate")
+                return
+            }
+
+
+            let data = await response.json()
+
+            console.log(data)
+
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key, nextCubeRotation_xyz)
+
+
+
+            /*
+            console.log("removing object", objectToRecreate)
+            let indexToDelete = allMeshes.indexOf(objectToRecreate)
+            if (indexToDelete >= 0) {
+
+                //delete caption
+                if (objectToRecreate.userData["caption"]) {
+                    scene.remove(objectToRecreate.userData["caption"])
+                    objectToRecreate.userData["caption"] = null
+                }
+                scene.remove(objectToRecreate)
+
+                allMeshes.splice(indexToDelete, 1)
+            } else {
+                console.log("error, could not remove object!")
+            }
+
+            //I have to remove it from all objects
+            
+
+            console.log("delete save data for old object", key)
+            let t = 0
+            if (key) {
+                //find in saveData.objects
+                for (var j in saveData.objects) {
+                    if (saveData.objects[j]["key"] == key) {
+                        //remove old save data
+                        console.log("removing object ", j, "with key", key, "from saveData")
+                        saveData.objects.splice(j, 1)
+                        t = 1
+                        break
+                    }
+                }
+                if (t == 0) {
+                    console.log("key", key, "not found!")
+                } else {
+                    console.log("saving")
+                    if (savePath != "NONE") {
+                        doSave()
+                    }
+                }
+            }
+            */
+
+            console.log("removing placeholder")
+            scene.remove(placeholder)
 
         }
 
