@@ -37,6 +37,8 @@ import random
 import re
 import hashlib
 
+from mubert import generate_track_by_prompt
+
 MIN_PROMPT_LENGTH=12
 
 
@@ -48,6 +50,8 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
   base_count = max([0]+[int(s[-9:-4]) for s in glob.glob(sample_path+"/[0-9][0-9][0-9][0-9][0-9].png")])+1
 
   hf_token=os.environ["HF_TOKEN"]
+
+  mubert_token=os.environ["MUBERT"]
 
 
   _login(HfApi(), token=hf_token)
@@ -259,6 +263,14 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
       depth_map.save(depthPath)
 
       return jsonify([prompt,imgName,depthName])
+
+
+  @app.route("/genPrompt", methods=['POST'])
+  def genAudio():
+      prompt = request.values.get('prompt')
+      duration = request.values.get('duration',30,type=int)
+      url=generate_track_by_prompt(prompt, duration, mubert_token, loop=False)
+      return jsonify({"url":url})
   
   @app.route("/saveData", methods=['POST'])
   def saveData():
@@ -283,7 +295,7 @@ if __name__ == '__main__':
 
 
   parser = argparse.ArgumentParser(description='launch StableCraft')
-  parser.add_argument('--diffusion_model', default="CompVis/stable-diffusion-v1-4")
+  parser.add_argument('--diffusion_model', default="runwayml/stable-diffusion-v1-5")
   parser.add_argument('--no_fp16', action='store_true')
   parser.add_argument('--num_inference_steps', type=int, default=30)
   args = parser.parse_args()

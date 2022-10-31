@@ -32,6 +32,11 @@
         import { FontLoader } from 'three/addons/loaders/FontLoader.js';
         import { TWEEN } from 'three/addons/libs/tween.module.min.js'
 
+
+        let audioReady = false
+        let audioTodo = []
+        let AUDIO_REF_DIST = 0.5
+
         let camera, scene, raycaster, renderer;
         let controller1, controller2;
         let controllerGrip1, controllerGrip2;
@@ -89,7 +94,8 @@
             3: "duplicate",
             4: "delete",
             5: "aspect ratio",
-            6: "move",
+            6: "audio",
+            7: "move",
         }
         let ACTION_MODE_TO_INDEX = {}
         for (var i in ACTION_MODES) {
@@ -97,7 +103,7 @@
         }
 
         let ACTION_MODE = 0//create
-        let NUM_ACTION_MODES = 7
+        let NUM_ACTION_MODES = 8
 
         init();
         animate();
@@ -401,6 +407,12 @@
 
                 //a check to prevent console errors if only one input source
                 if (isIterable(session.inputSources)) {
+
+                    if (!audioReady) {
+                        getAudioReady();
+                    }
+
+
                     for (const source of session.inputSources) {
                         if (source && source.handedness) {
                             handedness = source.handedness; //left or right controllers
@@ -649,6 +661,28 @@
 
                             }
 
+
+                            if (ACTION_MODES[ACTION_MODE] == "audio") {
+
+                                //check if we want to delete
+                                tempMatrix.identity().extractRotation(controller.matrixWorld);
+                                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                                raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                                //check for intersects with meshs
+                                const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                                if (intersects_mesh.length > 0) {
+                                    console.log("audio")
+                                    objectToMove = intersects_mesh[0].object
+                                    console.log("about to die", controller, objectToMove)
+                                    mode = "ADD_AUDIO"
+                                } else {
+                                    console.log("nothing to add audio to!")
+                                }
+
+
+
+                            }
+
                         } else {
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RECORDING") {
                                 console.log("stop recording")
@@ -795,6 +829,26 @@
                                 console.log("moved object")
                                 mode = "NONE"
 
+                            }
+
+                            if (data.handedness == "right" && data.buttons[4] == 0 && mode == "ADD_AUDIO") {
+
+                                //check if we want to RECREATe
+                                tempMatrix.identity().extractRotation(controller.matrixWorld);
+                                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                                raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                                //check for intersects with meshs
+                                const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                                if (intersects_mesh.length > 0) {
+                                    //displayCaption(intersects_mesh[0].object)
+                                    let objectToDelete = intersects_mesh[0].object
+                                    //todo: implement recreating
+                                    addAudio(objectToDelete)
+                                    console.log("adding audio")
+                                } else {
+                                    console.log("not adding audio")
+                                }
+                                mode = "NONE"
                             }
 
 
@@ -1120,6 +1174,137 @@
 
         }
 
+
+
+        async function addAudio(objectToRecreate) {
+
+            //if object has audio, remove it
+            if (objectToRecreate.userData["audio"]) {
+                console.log("removing audio")
+                objectToRecreate.userData["audio"].stop()
+                objectToRecreate.remove(objectToRecreate.userData["audio"])
+                scene.remove(objectToRecreate.userData["audio"])
+                objectToRecreate.userData["audio"] = null
+
+                //remove from save data
+                //first let's find the save data
+                let key = objectToRecreate.userData["key"]
+                console.log("save audio", key)
+                let t = 0
+                if (key) {
+                    //find in saveData.objects
+                    for (var j in saveData.objects) {
+                        if (saveData.objects[j]["key"] == key) {
+                            //remove old save data
+                            console.log("removing audio to object ", j, "with key", key, "from saveData")
+                            delete saveData.objects[j]["audioURL"]
+                            t = 1
+                            break
+                        }
+                    }
+                    if (t == 0) {
+                        console.log("key", key, "not found!")
+                    } else {
+                        console.log("saving")
+                        if (savePath != "NONE") {
+                            doSave()
+                        }
+                    }
+                }
+
+
+                return
+            }
+
+            //add a placeholder
+            let prompt = objectToRecreate.userData["prompt"]
+            let thisAspectRatio = objectToRecreate.userData["aspect_ratio"]
+            let nextCubePosition = objectToRecreate.position
+            let nextCubeRotation = objectToRecreate.rotation.y
+            let nextCubeRotation_xyz = [objectToRecreate.rotation.x, objectToRecreate.rotation.y, objectToRecreate.rotation.z]
+
+            let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
+
+            //get audio
+            //send prompt to server
+            let fd = new FormData();
+            fd.set("prompt", prompt)
+
+            //fetch url from /tts endpoint
+            let response = await fetch("/genAudio", {
+                body: fd,
+                method: "POST"
+            })
+
+            if (response.status !== 200) {
+                // You can do your error handling here
+                console.log("Failed recreate")
+                return
+            }
+
+
+            let data = await response.json()
+
+            console.log(data)
+
+            let audioURL = data['url']
+
+            // create an AudioListener and add it to the camera
+            const listener = new THREE.AudioListener();
+            camera.add(listener);
+
+            // create the PositionalAudio object (passing in the listener)
+            const sound = new THREE.PositionalAudio(listener);
+
+            // load a sound and set it as the PositionalAudio object's buffer
+            const audioLoader = new THREE.AudioLoader();
+            audioLoader.load(audioURL, function (buffer) {
+                sound.setBuffer(buffer);
+                sound.setRefDistance(AUDIO_REF_DIST);
+                sound.setLoop(true)
+                sound.play();
+
+            });
+
+            //save data
+            //first let's find the save data
+            let key = objectToRecreate.userData["key"]
+            console.log("save audio", key)
+            let t = 0
+            if (key) {
+                //find in saveData.objects
+                for (var j in saveData.objects) {
+                    if (saveData.objects[j]["key"] == key) {
+                        //remove old save data
+                        console.log("adding audio to object ", j, "with key", key, "from saveData")
+                        saveData.objects[j]["audioURL"] = audioURL
+                        t = 1
+                        break
+                    }
+                }
+                if (t == 0) {
+                    console.log("key", key, "not found!")
+                } else {
+                    console.log("saving")
+                    if (savePath != "NONE") {
+                        doSave()
+                    }
+                }
+            }
+
+
+
+
+            //add sound to object
+            objectToRecreate.userData["audio"] = sound
+
+            objectToRecreate.add(sound)
+
+            //delete placeholder
+            scene.remove(placeholder)
+
+        }
+
         function stopRecording() {
 
             if (!mediaRecorder) return
@@ -1285,11 +1470,88 @@
                 console.log("adding object", d, position, rotation, thisAspectRatio, key)
 
 
-                add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz)
+                let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz)
+
+                //add audio
+                if (object["audioURL"]) {
+
+                    let audioURL = object["audioURL"]
+
+                    if (audioReady) {
+
+
+
+                        // create an AudioListener and add it to the camera
+                        const listener = new THREE.AudioListener();
+                        camera.add(listener);
+
+                        // create the PositionalAudio object (passing in the listener)
+                        const sound = new THREE.PositionalAudio(listener);
+
+                        // load a sound and set it as the PositionalAudio object's buffer
+                        const audioLoader = new THREE.AudioLoader();
+                        audioLoader.load(audioURL, function (buffer) {
+                            sound.setBuffer(buffer);
+                            sound.setRefDistance(AUDIO_REF_DIST);
+                            sound.setLoop(true)
+                            sound.play();
+
+                        });
+
+                        //attach to mesth
+
+                        //add sound to object
+                        mesh.userData["audio"] = sound
+                        mesh.add(sound)
+
+                    } else {
+                        audioTodo.push([mesh, audioURL])
+                    }
+
+                }
+
+
             }
 
 
             saveData = data
+        }
+
+
+        function getAudioReady() {
+
+            console.log("trying audio")
+
+            for (var i in audioTodo) {
+                let mesh = audioTodo[i][0]
+                let audioURL = audioTodo[i][1]
+
+                // create an AudioListener and add it to the camera
+                const listener = new THREE.AudioListener();
+                camera.add(listener);
+
+                // create the PositionalAudio object (passing in the listener)
+                const sound = new THREE.PositionalAudio(listener);
+
+                // load a sound and set it as the PositionalAudio object's buffer
+                const audioLoader = new THREE.AudioLoader();
+                audioLoader.load(audioURL, function (buffer) {
+                    sound.setBuffer(buffer);
+                    sound.setRefDistance(AUDIO_REF_DIST);
+                    sound.setLoop(true)
+                    sound.play();
+
+                });
+
+                //attach to mesth
+
+                //add sound to object
+                mesh.userData["audio"] = sound
+                mesh.add(sound)
+            }
+
+
+            audioReady = true
         }
 
         function displayCaption(parentMesh) {
