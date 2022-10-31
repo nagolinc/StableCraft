@@ -186,10 +186,14 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
       #with open("tmp.webm",'wb') as f:
           #f.write(audio_input)
       audio_input.save("tmp.webm")
-      result = whisper_model.transcribe("tmp.webm",language="en")
 
-      prompt=result["text"]
-      print(prompt)
+      try:
+        result = whisper_model.transcribe("tmp.webm",language="en")
+        prompt=result["text"]
+        print(prompt)
+      except:
+        print("err, no audio")
+        prompt=""
 
       if len(prompt)<MIN_PROMPT_LENGTH:
         prompt=generatePrompt()
@@ -265,7 +269,7 @@ def setup(diffusion_model="CompVis/stable-diffusion-v1-4",num_inference_steps=30
       return jsonify([prompt,imgName,depthName])
 
 
-  @app.route("/genPrompt", methods=['POST'])
+  @app.route("/genAudio", methods=['POST'])
   def genAudio():
       prompt = request.values.get('prompt')
       duration = request.values.get('duration',30,type=int)
