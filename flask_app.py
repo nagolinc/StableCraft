@@ -497,7 +497,7 @@ if __name__ == '__main__':
     parser.add_argument('--edgeThreshold', type=float, default=2)
     parser.add_argument('--edgeWidth', type=int, default=3)
     parser.add_argument('--blurRadius', type=float, default=4)
-    parser.add_argument('--useXformers', type=bool, default=True)
+    parser.add_argument('--noXformers', action='store_false')
     args = parser.parse_args()
     print("args", args)
     app = setup(
@@ -510,6 +510,6 @@ if __name__ == '__main__':
         img2imgSize=args.img2img_size,
         blurRadius=args.blurRadius,
         suffix=args.suffix,
-        use_xformers=args.useXformers
+        use_xformers=(not args.noXformers)
     )
     app.run()
