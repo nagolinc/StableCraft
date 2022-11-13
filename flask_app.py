@@ -28,7 +28,12 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
 
 from mubert import generate_track_by_prompt
 
+#import asyncio
+import threading
+import time
+
 MIN_PROMPT_LENGTH = 12
+jobs_count=0
 
 
 def setup(
@@ -40,7 +45,8 @@ def setup(
     edgeThreshold=2,
     edgeWidth=3,
     blurRadius=4,
-    suffix="4k dslr"
+    suffix="4k dslr",
+    MAX_GEN_IMAGES=16
 ):
     global base_count
     # some constants that matter
@@ -78,6 +84,9 @@ def setup(
     # make sure you're logged in with `huggingface-cli login`
     vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse")
 
+    def safety_checker(images, clip_input):
+        return images, False
+
     if no_fp16:
         # make sure you're logged in with `huggingface-cli login`
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -85,7 +94,7 @@ def setup(
             scheduler=scheduler,
             vae=vae,
             torch_dtype=torch.float16,
-            safety_checker=None,
+            safety_checker=safety_checker,
             use_auth_token=True
         )
     else:
@@ -140,6 +149,9 @@ def setup(
                        ]
 
     all_prompts = []
+    generated_prompts=[]
+    generated_images=[]
+    used_images=[]
 
     def doGen(prompt, seed, height=512, width=512):
         global base_count
@@ -202,7 +214,9 @@ def setup(
         img.save(imgPath)
         return img, imgName
 
-    def generatePrompt(k=5, max_new_tokens=200):
+    def generatePrompt(lock,k=5, max_new_tokens=200):
+        lock.acquire()
+
         if len(all_prompts) >= k:
             prompts = random.sample(all_prompts, k)
         else:
@@ -215,16 +229,18 @@ def setup(
         print("got output", output)
         rv = [s for s in output.split("\n") if len(
             s) > MIN_PROMPT_LENGTH and "description:" not in s]
+
+        #save these prompts
+        generated_prompts.append(rv)
+
         if len(rv) == 0:
-            return random.choice(prompts)
-        '''#and let's try to take one of the longer prompts
-    rv.sort(key=lambda x:len(x),reverse=True)
-    print("rv",rv)
-    rv=[s for s in rv if len(s)>len(rv[0])//2]
-    print("rv",rv)'''
-        out = random.choice(rv)
+            out = random.choice(prompts)
+        else:
+            out = random.choice(rv)
         print("returning", out)
+        lock.release()
         return out
+        #fut.set_result(out)
 
     def process_image(image):
         # prepare image for the model
@@ -270,28 +286,45 @@ def setup(
         img = Image.fromarray(mask)
         return img
 
+
+    def getImageWithPrompt(lock, prompt,width,height,seed):
+        lock.acquire()
+        h = hashlib.sha224(("%s --seed %d" % (prompt, seed)
+                            ).encode('utf-8')).hexdigest()
+        img, imgName = doGen(prompt, seed, height, width)
+
+        depth_map = process_image(img)
+
+        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
+        edgeName = "%s_e.png" % h
+        edgePath = os.path.join(sample_path, edgeName)
+        edge_mask.save(edgePath)
+
+        depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius=blurRadius))
+
+        depthName = "%s_d.png" % h
+        depthPath = os.path.join(sample_path, depthName)
+        depth_map.save(depthPath)
+
+        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
+        edgeName = "%s_e.png" % h
+        edgePath = os.path.join(sample_path, edgeName)
+        edge_mask.save(edgePath)
+
+        result= [prompt, imgName, depthName,edgeName]
+        lock.release()
+        return result
+        #fut.set_result(result)
+
     # setup whisper
 
     whisper_model = whisper.load_model("small.en")
 
-    # flask server
-    app = Flask(__name__)
-    run_with_ngrok(app, auth_token=os.environ["NGROK_TOKEN"])
 
-    @app.route("/")
-    def hello_world():
-        return "<p>Hello, World!</p><br><a href='static/examples/whisper.html'>StableCraft</a>"
 
-    @app.route("/putAudio", methods=['POST'])
-    def putAudio():
-        global base_count
-        audio_input = request.files['audio_data']
-        width = request.values.get("width", default=512, type=int)
-        height = request.values.get("height", default=512, type=int)
-        seed = request.values.get("seed", default=-1, type=int)
-        print("img properties", width, height, seed)
-        # with open("tmp.webm",'wb') as f:
-        # f.write(audio_input)
+
+    def transcribeAudio(lock,audio_input):
+        lock.acquire()
         audio_input.save("tmp.webm")
 
         try:
@@ -302,9 +335,75 @@ def setup(
             print("err, no audio")
             prompt = ""
 
+        #fut.set_result(prompt)
+        lock.release()
+        return prompt
+
+
+    def generateBackgroundObjects(lock,waitingAmount=3):
+        while True:
+            if lock.locked() or jobs_count>0 or len(generated_images)>MAX_GEN_IMAGES:
+                time.sleep(waitingAmount)
+            else:
+                print("generating object in background")
+                prompt = generatePrompt(lock)
+                width=height=512
+                seed=-1
+                bgObject = getImageWithPrompt(lock,prompt,width,height,seed)
+                generated_images.append(bgObject)
+            
+
+
+
+
+
+    # flask server
+    app = Flask(__name__)
+    run_with_ngrok(app, auth_token=os.environ["NGROK_TOKEN"])
+
+
+
+    @app.route("/")
+    def hello_world():
+        return "<p>Hello, World!</p><br><a href='static/examples/whisper.html'>StableCraft</a>"
+
+
+    #loop = asyncio.get_event_loop()
+
+    lock = threading.Lock()
+
+    backgroundThread=threading.Thread(target=generateBackgroundObjects,args=[lock])
+    backgroundThread.start()
+
+
+
+    @app.route("/putAudio", methods=['POST'])
+    def putAudio():
+        global jobs_count
+        global base_count
+        jobs_count+=1
+
+        audio_input = request.files['audio_data']
+        width = request.values.get("width", default=512, type=int)
+        height = request.values.get("height", default=512, type=int)
+        seed = request.values.get("seed", default=-1, type=int)
+        print("img properties", width, height, seed)
+        # with open("tmp.webm",'wb') as f:
+        # f.write(audio_input)
+
+        #transcribe audio
+        #fut=loop.create_future()
+        #loop.create_task(transcribeAudio(fut,audio_input))
+        #prompt=await fut
+        prompt=transcribeAudio(lock,audio_input)
+
+        
         if len(prompt) < MIN_PROMPT_LENGTH or prompt.lower().startswith("thank"):
             print("skipping prompt", prompt)
-            prompt = generatePrompt()
+            prompt = generatePrompt(lock)
+            #fut=loop.create_future()
+            #loop.create_task(generatePrompt(fut))
+            #prompt=await fut            
             print("generated prompt:", prompt)
         else:
             all_prompts.append(prompt)
@@ -312,33 +411,19 @@ def setup(
         if seed == -1:
             seed = random.randint(0, 10**9)
 
-        h = hashlib.sha224(("%s --seed %d" % (prompt, seed)
-                            ).encode('utf-8')).hexdigest()
-        img, imgName = doGen(prompt, seed, height, width)
 
-        depth_map = process_image(img)
+        #geneate image
+        jobs_count-=1
 
-        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
-        edgeName = "%s_e.png" % h
-        edgePath = os.path.join(sample_path, edgeName)
-        edge_mask.save(edgePath)
+        return jsonify(getImageWithPrompt(lock,prompt,width,height,seed))
 
-        depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius=blurRadius))
-
-        depthName = "%s_d.png" % h
-        depthPath = os.path.join(sample_path, depthName)
-        depth_map.save(depthPath)
-
-        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
-        edgeName = "%s_e.png" % h
-        edgePath = os.path.join(sample_path, edgeName)
-        edge_mask.save(edgePath)
-
-        return jsonify([prompt, imgName, depthName,edgeName])
+        
 
     @app.route("/genPrompt", methods=['POST'])
     def genPrompt():
         global base_count
+        global jobs_count
+        jobs_count +=1
         prompt = request.values.get('prompt')
         width = request.values.get("width", default=512, type=int)
         height = request.values.get("height", default=512, type=int)
@@ -348,26 +433,9 @@ def setup(
         if seed == -1:
             seed = random.randint(0, 10**9)
 
-        h = hashlib.sha224(("%s --seed %d" % (prompt, seed)
-                            ).encode('utf-8')).hexdigest()
-
-        img, imgName = doGen(prompt, seed, height, width)
-
-        depth_map = process_image(img)
-
-        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
-        edgeName = "%s_e.png" % h
-        edgePath = os.path.join(sample_path, edgeName)
-        edge_mask.save(edgePath)
-
-
-        depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius=blurRadius))
-
-        depthName = "%s_d.png" % h
-        depthPath = os.path.join(sample_path, depthName)
-        depth_map.save(depthPath)
-
-        return jsonify([prompt, imgName, depthName,edgeName])
+        #geneate image
+        jobs_count -=1
+        return jsonify(getImageWithPrompt(lock,prompt,width,height,seed))
 
     @app.route("/genAudio", methods=['POST'])
     def genAudio():
@@ -392,7 +460,19 @@ def setup(
             "saveData": saveData,
         })
 
+    @app.route("/getBackgroundObject")
+    def getBackgroundObject():
+        if len(generated_images)>0:
+            result=generated_images.pop()
+            used_images.append(result)
+        else:
+            result=random.choice(generated_images)
+        return jsonify(result)
+
+
     return app
+
+
 
 
 if __name__ == '__main__':

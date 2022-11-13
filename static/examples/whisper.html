@@ -70,6 +70,8 @@
         let allMeshes = []
         let allCaptions = []
         var loader = new FontLoader();
+        let gridToMeshes={}
+        let gridSize=5
 
         let aspect_ratios = {
             0: "square",
@@ -102,7 +104,7 @@
             ACTION_MODE_TO_INDEX[i] = i
         }
 
-        let ACTION_MODE = 0//create
+        let ACTION_MODE = 1//create
         let NUM_ACTION_MODES = 8
 
         init();
@@ -202,13 +204,7 @@
                     const turn = new THREE.Quaternion()
                     turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
 
-
-
-
-                    //offsetRotation=offsetRotation.dot(turn)
-                    //offsetRotation.multiply(turn)
-                    //cameraOffsetRotation.copy(offsetRotation)
-                    //renderer.xr.setReferenceSpace(teleportSpaceOffset);
+                    generateBackgroundObjects(cameraOffsetPosition)
 
 
                     const transform = new XRRigidTransform(offsetPosition, nullRotation);
@@ -216,9 +212,6 @@
                     const t2 = baseReferenceSpace.getOffsetReferenceSpace(doRotate)
                     const t3 = t2.getOffsetReferenceSpace(transform);
                     renderer.xr.setReferenceSpace(t3);
-
-
-
                 }
 
             }
@@ -686,7 +679,25 @@
                         } else {
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RECORDING") {
                                 console.log("stop recording")
-                                stopRecording()
+                                //need to pass postion/rotation
+                                //camera position?
+                                const position = new THREE.Vector3();
+                                const rotation = new THREE.Quaternion();
+                                const scale = new THREE.Vector3();
+                                // the following line extracts the position, rotation and scale in world space
+                                camera.matrixWorld.decompose(position, rotation, scale);
+                                const euler = new THREE.Euler();
+                                euler.setFromQuaternion(rotation, "YZX")
+                                let r = euler.y
+                                //use this to place object
+                                nextCubePosition = new THREE.Vector3().copy(position);
+                                nextCubePosition.y = 1
+                                nextCubePosition.x -= 2 * Math.sin(r)
+                                nextCubePosition.z -= 2 * Math.cos(r)
+                                nextCubeRotation = r
+
+
+                                stopRecording(nextCubePosition,nextCubeRotation)
                                 mode = "NONE"
                             }
 
@@ -940,7 +951,7 @@
 
         }
 
-        async function play(nextCubePosition) {
+        async function play(nextCubePosition,nextCubeRotation) {
 
             let thisAspectRatio = aspect_ratio
 
@@ -974,6 +985,39 @@
             add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key)
             scene.remove(placeholder)
 
+        }
+
+        async function generateBackgroundObjects(position){
+            let gridX=int(position.x/gridSize)
+            let gridY=int(position.x/gridSize)
+            key=`${gridX}_${gridY}`
+            if(key in gridToMeshes){
+                //do nothing
+            }else{
+                gridToMeshes[key]=[]
+                //something needs to go here
+                let nextCubePosition=new THREE.Vector3(
+                    (gridX+Math.random())*gridSize,
+                    (gridY+Math.random())*gridSize,
+                    0
+                )
+                let nextCubeRotation=Math.random()*2*Math.PI
+                let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
+                //fetch url from /tts endpoint
+                let response = await fetch("/putAudio", {
+                    body: fd,
+                    method: "POST"
+                })
+                let data = await response.json()
+
+                console.log(data)
+
+                let key = "KEY" + Math.random() + "_" + Math.random()
+                add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key)
+                scene.remove(placeholder)
+            }
+            
+            
         }
 
         async function recreateObject(objectToRecreate) {
@@ -1305,7 +1349,7 @@
 
         }
 
-        function stopRecording() {
+        function stopRecording(nextCubePosition,nextCubeRotation) {
 
             if (!mediaRecorder) return
 
@@ -1314,7 +1358,7 @@
             scene.remove(placeholderCube)
 
             function doPlay() {
-                play(nextCubePosition)
+                play(nextCubePosition,nextCubeRotation)
             }
             setTimeout(doPlay, 0.1)
 
@@ -1414,6 +1458,16 @@
 
 
 
+            }
+
+            //add mesh to grid
+            let gridX=int(mesh.position.x/gridSize)
+            let gridY=int(mesh.position.x/gridSize)
+            key=`${gridX}_${gridY}`
+            if(key in gridToMeshes){
+                gridToMeshes[key].push(mesh)
+            }else{
+                gridToMeshes[key]=[mesh]
             }
 
             return mesh
