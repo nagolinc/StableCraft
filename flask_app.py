@@ -509,6 +509,7 @@ if __name__ == '__main__':
         edgeWidth=args.edgeWidth,
         img2imgSize=args.img2img_size,
         blurRadius=args.blurRadius,
-        suffix=args.suffix
+        suffix=args.suffix,
+        use_xformers=args.useXformers
     )
     app.run()
