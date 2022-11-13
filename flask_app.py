@@ -46,7 +46,8 @@ def setup(
     edgeWidth=3,
     blurRadius=4,
     suffix="4k dslr",
-    MAX_GEN_IMAGES=18
+    MAX_GEN_IMAGES=18,
+    use_xformers=True
 ):
     global base_count
     # some constants that matter
@@ -111,7 +112,8 @@ def setup(
 
     pipe = pipe.to("cuda")
     pipe.enable_attention_slicing()
-    pipe.enable_xformers_memory_efficient_attention()
+    if use_xformers:
+        pipe.enable_xformers_memory_efficient_attention()
 
     if doImg2Img:
         print("LOADING Img2Img")
@@ -129,7 +131,8 @@ def setup(
             cache_dir="./AI/StableDiffusion"
         )
         img2img.enable_attention_slicing()
-        img2img.enable_xformers_memory_efficient_attention()
+        if use_xformers:
+            img2img.enable_xformers_memory_efficient_attention()
 
     # iface = gradio.Interface.load("spaces/nielsr/dpt-depth-estimation")#don't use this anymore apparently?
 
@@ -494,6 +497,7 @@ if __name__ == '__main__':
     parser.add_argument('--edgeThreshold', type=float, default=2)
     parser.add_argument('--edgeWidth', type=int, default=3)
     parser.add_argument('--blurRadius', type=float, default=4)
+    parser.add_argument('--useXformers', type=bool, default=True)
     args = parser.parse_args()
     print("args", args)
     app = setup(
