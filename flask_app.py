@@ -37,6 +37,7 @@ def setup(
     no_fp16=False,
     doImg2Img=True,
     img2imgSize=1024,
+    edgeThreshold=2,
     suffix="4k dslr"
 ):
     global base_count
@@ -308,7 +309,7 @@ def setup(
         depthPath = os.path.join(sample_path, depthName)
         depth_map.save(depthPath)
 
-        edge_mask = removeEdges(depth_map)
+        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
         edgeName = "%s_e.png" % h
         edgePath = os.path.join(sample_path, edgeName)
         edge_mask.save(edgePath)
@@ -377,6 +378,7 @@ if __name__ == '__main__':
     parser.add_argument('--img2img_size', type=float, default=1.5)
     parser.add_argument('--num_inference_steps', type=int, default=20)
     parser.add_argument('--suffix', type=str, default="4k dslr")
+    parser.add_argument('--edgeThreshold', type=float, default=2)
     args = parser.parse_args()
     print("args", args)
     app = setup(
@@ -384,6 +386,7 @@ if __name__ == '__main__':
         no_fp16=args.no_fp16,
         doImg2Img=args.do_img2img,
         num_inference_steps=args.num_inference_steps,
+        edgeThreshold=args.edgeThreshold,
         img2imgSize=args.img2img_size,
         suffix=args.suffix
     )

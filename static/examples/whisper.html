@@ -1324,26 +1324,38 @@
         function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz) {
             let imgPath = "../samples/" + data[1]
             let dPath = "../samples/" + data[2]
-            
+
             const textureLoader = new THREE.TextureLoader();
             const colorMap = textureLoader.load(imgPath);
             const displacementMap = textureLoader.load(dPath);
 
             let edgeMap;
-            if (data.length>3){
+            if (data.length > 3 && data[3]) {
                 let ePath = "../samples/" + data[3]
-                const edgeMap = textureLoader.load(dPath);
+                edgeMap = textureLoader.load(ePath);
             }
 
-            let material = new THREE.MeshStandardMaterial({
-                map: colorMap,
-                displacementMap: displacementMap,
-                displacementScale: 1.0,
-                displacementBias: -0.5, // from original model
-                alphaMap:edgeMap,
-                transparent:true,
-                side: THREE.DoubleSide
-            });
+            let material;
+            if (edgeMap) {
+                material = new THREE.MeshStandardMaterial({
+                    map: colorMap,
+                    displacementMap: displacementMap,
+                    displacementScale: 1.0,
+                    displacementBias: -0.5, // from original model
+                    alphaMap: edgeMap,
+                    transparent: true,
+                    side: THREE.DoubleSide
+                });
+            } else {
+                material = new THREE.MeshStandardMaterial({
+                    map: colorMap,
+                    displacementMap: displacementMap,
+                    displacementScale: 1.0,
+                    displacementBias: -0.5, // from original model
+                    side: THREE.DoubleSide
+                });
+
+            }
 
             //back compatability
             if (!thisAspectRatio) {
@@ -1382,13 +1394,12 @@
 
             if (saveThisObject) {
 
-
-
                 let thisObject = {
                     "key": key,
                     "name": data[0],
                     "map": data[1],
                     "disp": data[2],
+                    "edge": data[3],
                     "xyz": [mesh.position.x, mesh.position.y, mesh.position.z],
                     "rotation": mesh.rotation.y,
                     "rotation_xyz": [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
@@ -1473,7 +1484,7 @@
             for (var object of data.objects) {
                 let position = new THREE.Vector3(object.xyz[0], object.xyz[1], object.xyz[2])
                 let rotation = object.rotation
-                let d = [object.name, object.map, object.disp]
+                let d = [object.name, object.map, object.disp, object.edge]
                 let thisAspectRatio = object.aspect_ratio
                 let key = object.key
                 console.log("adding object", d, position, rotation, thisAspectRatio, key)
