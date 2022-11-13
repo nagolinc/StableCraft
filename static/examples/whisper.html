@@ -1324,15 +1324,24 @@
         function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz) {
             let imgPath = "../samples/" + data[1]
             let dPath = "../samples/" + data[2]
+            
             const textureLoader = new THREE.TextureLoader();
             const colorMap = textureLoader.load(imgPath);
             const displacementMap = textureLoader.load(dPath);
+
+            let edgeMap;
+            if (data.length>3){
+                let ePath = "../samples/" + data[3]
+                const edgeMap = textureLoader.load(dPath);
+            }
 
             let material = new THREE.MeshStandardMaterial({
                 map: colorMap,
                 displacementMap: displacementMap,
                 displacementScale: 1.0,
                 displacementBias: -0.5, // from original model
+                alphaMap:edgeMap,
+                transparent:true,
                 side: THREE.DoubleSide
             });
 
