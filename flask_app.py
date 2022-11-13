@@ -510,6 +510,6 @@ if __name__ == '__main__':
         img2imgSize=args.img2img_size,
         blurRadius=args.blurRadius,
         suffix=args.suffix,
-        use_xformers=(not args.noXformers)
+        use_xformers=args.noXformers
     )
     app.run()
