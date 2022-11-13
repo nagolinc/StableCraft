@@ -38,6 +38,8 @@ def setup(
     doImg2Img=True,
     img2imgSize=1024,
     edgeThreshold=2,
+    edgeWidth=3,
+    blurRadius=4,
     suffix="4k dslr"
 ):
     global base_count
@@ -251,6 +253,18 @@ def setup(
         r4 = np.roll(a, 1, axis=1)
         d = np.max([np.abs(a-r1), np.abs(a-r2),
                    np.abs(a-r3), np.abs(a-r4)], axis=0)
+
+        l=[d]
+        for i in range(edgeWidth):
+            r1 = np.roll(d, -i, axis=0)
+            r2 = np.roll(d, i, axis=0)
+            r3 = np.roll(d, -i, axis=1)
+            r4 = np.roll(d, i, axis=1)
+            l+=[r1,r2,r3,r4]
+        d=np.max(l,0)
+        
+
+        
         # return d
         mask = d < thresh
         img = Image.fromarray(mask)
@@ -303,7 +317,13 @@ def setup(
         img, imgName = doGen(prompt, seed, height, width)
 
         depth_map = process_image(img)
-        depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius=2))
+
+        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
+        edgeName = "%s_e.png" % h
+        edgePath = os.path.join(sample_path, edgeName)
+        edge_mask.save(edgePath)
+
+        depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius=blurRadius))
 
         depthName = "%s_d.png" % h
         depthPath = os.path.join(sample_path, depthName)
@@ -334,13 +354,20 @@ def setup(
         img, imgName = doGen(prompt, seed, height, width)
 
         depth_map = process_image(img)
-        depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius=2))
+
+        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
+        edgeName = "%s_e.png" % h
+        edgePath = os.path.join(sample_path, edgeName)
+        edge_mask.save(edgePath)
+
+
+        depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius=blurRadius))
 
         depthName = "%s_d.png" % h
         depthPath = os.path.join(sample_path, depthName)
         depth_map.save(depthPath)
 
-        return jsonify([prompt, imgName, depthName])
+        return jsonify([prompt, imgName, depthName,edgeName])
 
     @app.route("/genAudio", methods=['POST'])
     def genAudio():
@@ -379,6 +406,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_inference_steps', type=int, default=20)
     parser.add_argument('--suffix', type=str, default="4k dslr")
     parser.add_argument('--edgeThreshold', type=float, default=2)
+    parser.add_argument('--edgeWidth', type=int, default=3)
+    parser.add_argument('--blurRadius', type=float, default=4)
     args = parser.parse_args()
     print("args", args)
     app = setup(
@@ -387,7 +416,9 @@ if __name__ == '__main__':
         doImg2Img=args.do_img2img,
         num_inference_steps=args.num_inference_steps,
         edgeThreshold=args.edgeThreshold,
+        edgeWidth=args.edgeWidth,
         img2imgSize=args.img2img_size,
+        blurRadius=args.blurRadius,
         suffix=args.suffix
     )
     app.run()
