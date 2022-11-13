@@ -70,8 +70,9 @@
         let allMeshes = []
         let allCaptions = []
         var loader = new FontLoader();
-        let gridToMeshes={}
-        let gridSize=5
+        let gridToMeshes = {}
+        let gridSize = 5
+        let bgGenRange = 1
 
         let aspect_ratios = {
             0: "square",
@@ -697,7 +698,7 @@
                                 nextCubeRotation = r
 
 
-                                stopRecording(nextCubePosition,nextCubeRotation)
+                                stopRecording(nextCubePosition, nextCubeRotation)
                                 mode = "NONE"
                             }
 
@@ -951,7 +952,7 @@
 
         }
 
-        async function play(nextCubePosition,nextCubeRotation) {
+        async function play(nextCubePosition, nextCubeRotation) {
 
             let thisAspectRatio = aspect_ratio
 
@@ -987,37 +988,45 @@
 
         }
 
-        async function generateBackgroundObjects(position){
-            let gridX=int(position.x/gridSize)
-            let gridY=int(position.x/gridSize)
-            key=`${gridX}_${gridY}`
-            if(key in gridToMeshes){
-                //do nothing
-            }else{
-                gridToMeshes[key]=[]
-                //something needs to go here
-                let nextCubePosition=new THREE.Vector3(
-                    (gridX+Math.random())*gridSize,
-                    (gridY+Math.random())*gridSize,
-                    0
-                )
-                let nextCubeRotation=Math.random()*2*Math.PI
-                let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
-                //fetch url from /tts endpoint
-                let response = await fetch("/putAudio", {
-                    body: fd,
-                    method: "POST"
-                })
-                let data = await response.json()
+        async function generateBackgroundObjects(position) {
+            let _gridX = Math.floor(position.x / gridSize)
+            let _gridZ = Math.floor(position.z / gridSize)
 
-                console.log(data)
+            for (let i = -bgGenRange; i < bgGenRange + 1; i++) {
+                for (let j = -bgGenRange; j < bgGenRange + 1; j++) {
 
-                let key = "KEY" + Math.random() + "_" + Math.random()
-                add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key)
-                scene.remove(placeholder)
+                    let gridX=_gridX+i
+                    let gridZ=_gridZ+j
+
+                    let gridKey = `${gridX}_${gridZ}`
+                    if (gridKey in gridToMeshes) {
+                        //do nothing
+                    } else {
+                        console.log("Adding bg object", gridX, gridZ)
+                        gridToMeshes[gridKey] = []
+                        //something needs to go here
+                        let nextCubePosition = new THREE.Vector3(
+                            (gridX + Math.random()) * gridSize,
+                            1,
+                            (gridZ + Math.random()) * gridSize,
+                        )
+                        let nextCubeRotation = Math.random() * 2 * Math.PI
+                        let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
+                        //fetch url from /tts endpoint
+                        let response = await fetch("/getBackgroundObject")
+                        let data = await response.json()
+
+                        console.log(data)
+
+                        let aspectRatio=data[4]
+
+                        let key = "KEY" + Math.random() + "_" + Math.random()
+                        add3dImage(data, nextCubePosition, nextCubeRotation, true, aspectRatio, key)
+                        scene.remove(placeholder)
+                    }
+
+                }
             }
-            
-            
         }
 
         async function recreateObject(objectToRecreate) {
@@ -1129,6 +1138,9 @@
 
             //offset postion
             let offsetAmt = 1
+            if(thisAspectRatio=="landscape"){
+                offsetAmt=1.5
+            }
             let offsetAngle = Math.PI / 2
             let offsetX = Math.sin(euler.y + offsetAngle) * offsetAmt
             let offsetZ = Math.cos(euler.y + offsetAngle) * offsetAmt
@@ -1349,7 +1361,7 @@
 
         }
 
-        function stopRecording(nextCubePosition,nextCubeRotation) {
+        function stopRecording(nextCubePosition, nextCubeRotation) {
 
             if (!mediaRecorder) return
 
@@ -1358,7 +1370,7 @@
             scene.remove(placeholderCube)
 
             function doPlay() {
-                play(nextCubePosition,nextCubeRotation)
+                play(nextCubePosition, nextCubeRotation)
             }
             setTimeout(doPlay, 0.1)
 
@@ -1461,13 +1473,13 @@
             }
 
             //add mesh to grid
-            let gridX=int(mesh.position.x/gridSize)
-            let gridY=int(mesh.position.x/gridSize)
-            key=`${gridX}_${gridY}`
-            if(key in gridToMeshes){
-                gridToMeshes[key].push(mesh)
-            }else{
-                gridToMeshes[key]=[mesh]
+            let gridX = Math.floor(mesh.position.x / gridSize)
+            let gridZ = Math.floor(mesh.position.z / gridSize)
+            let gridKey = `${gridX}_${gridZ}`
+            if (key in gridToMeshes) {
+                gridToMeshes[gridKey].push(mesh)
+            } else {
+                gridToMeshes[gridKey] = [mesh]
             }
 
             return mesh

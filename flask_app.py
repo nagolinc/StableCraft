@@ -46,7 +46,7 @@ def setup(
     edgeWidth=3,
     blurRadius=4,
     suffix="4k dslr",
-    MAX_GEN_IMAGES=16
+    MAX_GEN_IMAGES=18
 ):
     global base_count
     # some constants that matter
@@ -105,7 +105,7 @@ def setup(
             scheduler=scheduler,
             vae=vae,
             torch_dtype=torch.float16,
-            safety_checker=None,
+            safety_checker=safety_checker,
             use_auth_token=True
         )
 
@@ -289,6 +289,8 @@ def setup(
 
     def getImageWithPrompt(lock, prompt,width,height,seed):
         lock.acquire()
+        print("PROMPT:",prompt)
+        
         h = hashlib.sha224(("%s --seed %d" % (prompt, seed)
                             ).encode('utf-8')).hexdigest()
         img, imgName = doGen(prompt, seed, height, width)
@@ -347,9 +349,12 @@ def setup(
             else:
                 print("generating object in background")
                 prompt = generatePrompt(lock)
-                width=height=512
+                aspect_ratio=random.choice(["square","portrait","landscape"])
+                ratioToSize={"square":(512,512),"portrait":(512,768),"landscape":(768,512)}
+                width,height=ratioToSize[aspect_ratio]
                 seed=-1
                 bgObject = getImageWithPrompt(lock,prompt,width,height,seed)
+                bgObject += [aspect_ratio]
                 generated_images.append(bgObject)
             
 
@@ -413,9 +418,10 @@ def setup(
 
 
         #geneate image
+        result=getImageWithPrompt(lock,prompt,width,height,seed)
         jobs_count-=1
 
-        return jsonify(getImageWithPrompt(lock,prompt,width,height,seed))
+        return jsonify(result)
 
         
 
@@ -434,8 +440,9 @@ def setup(
             seed = random.randint(0, 10**9)
 
         #geneate image
+        result = getImageWithPrompt(lock,prompt,width,height,seed)
         jobs_count -=1
-        return jsonify(getImageWithPrompt(lock,prompt,width,height,seed))
+        return jsonify(result)
 
     @app.route("/genAudio", methods=['POST'])
     def genAudio():
@@ -466,9 +473,8 @@ def setup(
             result=generated_images.pop()
             used_images.append(result)
         else:
-            result=random.choice(generated_images)
+            result=random.choice(used_images)
         return jsonify(result)
-
 
     return app
 
