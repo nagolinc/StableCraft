@@ -98,7 +98,9 @@
             4: "delete",
             5: "aspect ratio",
             6: "audio",
-            7: "move",
+            7: "resize",
+            8: "move",
+
         }
         let ACTION_MODE_TO_INDEX = {}
         for (var i in ACTION_MODES) {
@@ -107,6 +109,9 @@
 
         let ACTION_MODE = 1//create
         let NUM_ACTION_MODES = 8
+
+        let near = 5
+        let far = 15
 
         init();
         animate();
@@ -117,8 +122,6 @@
             const bg_col = 0x505050
             scene.background = new THREE.Color(bg_col);
 
-            const near = 10
-            const far = 30
             scene.fog = new THREE.Fog(bg_col, near, far);
 
 
@@ -206,6 +209,8 @@
                     turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
 
                     generateBackgroundObjects(cameraOffsetPosition)
+
+                    hideDistanceObjects(cameraOffsetPosition)
 
 
                     const transform = new XRRigidTransform(offsetPosition, nullRotation);
@@ -388,6 +393,8 @@
         let controller_move_start
         let object_move_start
         let objectToMove
+        let startingObjectScale
+        let startingControllerDist
 
 
         function dollyMove() {
@@ -651,7 +658,36 @@
                                     console.log("nothing to move!")
                                 }
 
+                            }
 
+                            if (ACTION_MODES[ACTION_MODE] == "resize") {
+
+                                //check if we want to delete
+                                tempMatrix.identity().extractRotation(controller.matrixWorld);
+                                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                                raycaster.ray.direction.set(0, 0, - 1).applyMatrix4(tempMatrix);
+                                //check for intersects with meshs
+                                const intersects_mesh = raycaster.intersectObjects(allMeshes);
+                                if (intersects_mesh.length > 0) {
+                                    console.log("scaling")
+                                    objectToMove = intersects_mesh[0].object
+                                    startingObjectScale = objectToMove.scale.x
+                                    startingControllerDist = controller1.position.copy().sub(controller2.position).length()
+                                    controller.attach(objectToMove);
+                                    mode = "RESIZE_OBJECT"
+                                } else {
+                                    console.log("nothing to resize!")
+                                }
+
+                            }
+
+                            //intermediate resize object
+                            if (mode == "RESIZE_OBJECT") {
+
+                                let endingControllerDist = controller1.position.copy().sub(controller2.position).length()
+                                endingObjectScale = startingObjectScale * endingControllerDist / startingControllerDist
+
+                                objectToMove.scale = new THREE.Vector3(endingObjectScale, endingObjectScale, endingObjectScale)
 
                             }
 
@@ -680,23 +716,6 @@
                         } else {
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RECORDING") {
                                 console.log("stop recording")
-                                //need to pass postion/rotation
-                                //camera position?
-                                const position = new THREE.Vector3();
-                                const rotation = new THREE.Quaternion();
-                                const scale = new THREE.Vector3();
-                                // the following line extracts the position, rotation and scale in world space
-                                camera.matrixWorld.decompose(position, rotation, scale);
-                                const euler = new THREE.Euler();
-                                euler.setFromQuaternion(rotation, "YZX")
-                                let r = euler.y
-                                //use this to place object
-                                nextCubePosition = new THREE.Vector3().copy(position);
-                                nextCubePosition.y = 1
-                                nextCubePosition.x -= 2 * Math.sin(r)
-                                nextCubePosition.z -= 2 * Math.cos(r)
-                                nextCubeRotation = r
-
 
                                 stopRecording(nextCubePosition, nextCubeRotation)
                                 mode = "NONE"
@@ -843,6 +862,49 @@
 
                             }
 
+                            if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RESIZE_OBJECT") {
+
+                                let endingControllerDist = controller1.position.copy().sub(controller2.position).length()
+                                endingObjectScale = startingObjectScale * endingControllerDist / startingControllerDist
+
+                                objectToMove.scale = new THREE.Vector3(endingObjectScale, endingObjectScale, endingObjectScale)
+
+                                //todo save new position and rotation
+                                let key = objectToMove.userData["key"]
+                                console.log("saving new position of object with key", key)
+                                let t = 0
+                                if (key) {
+                                    //find in saveData.objects
+                                    for (var j in saveData.objects) {
+                                        if (saveData.objects[j]["key"] == key) {
+                                            saveData.objects[j]["xyz"] = [objectToMove.position.x, objectToMove.position.y, objectToMove.position.z],
+                                                saveData.objects[j]["rotation"] = objectToMove.rotation.y,
+                                                saveData.objects[j]["rotation_xyz"] = [objectToMove.rotation.x, objectToMove.rotation.y, objectToMove.rotation.z],
+                                                saveData.objects[j]["scale"] = [objectToMove.scale.x, objectToMove.scale.y, objectToMove.scale.z],
+                                                t = 1
+                                            break
+                                        }
+                                    }
+                                    if (t == 0) {
+                                        console.log("key", key, "not found!")
+                                    } else {
+                                        console.log("saving")
+                                        if (savePath != "NONE") {
+                                            doSave()
+                                        }
+                                    }
+
+                                }
+
+                                console.log("moved object")
+                                mode = "NONE"
+
+                            }
+
+
+
+
+
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "ADD_AUDIO") {
 
                                 //check if we want to RECREATe
@@ -988,6 +1050,18 @@
 
         }
 
+        function hideDistanceObjects(cameraPosition) {
+            for (var mesh of allMeshes) {
+                let d = cameraPosition.clone().sub(mesh.position).length()
+                if (d < far) {
+                    mesh.visible = true
+                } else {
+                    mesh.visible = false
+                }
+
+            }
+        }
+
         async function generateBackgroundObjects(position) {
             let _gridX = Math.floor(position.x / gridSize)
             let _gridZ = Math.floor(position.z / gridSize)
@@ -995,8 +1069,8 @@
             for (let i = -bgGenRange; i < bgGenRange + 1; i++) {
                 for (let j = -bgGenRange; j < bgGenRange + 1; j++) {
 
-                    let gridX=_gridX+i
-                    let gridZ=_gridZ+j
+                    let gridX = _gridX + i
+                    let gridZ = _gridZ + j
 
                     let gridKey = `${gridX}_${gridZ}`
                     if (gridKey in gridToMeshes) {
@@ -1018,7 +1092,7 @@
 
                         console.log(data)
 
-                        let aspectRatio=data[4]
+                        let aspectRatio = data[4]
 
                         let key = "KEY" + Math.random() + "_" + Math.random()
                         add3dImage(data, nextCubePosition, nextCubeRotation, true, aspectRatio, key)
@@ -1138,8 +1212,8 @@
 
             //offset postion
             let offsetAmt = 1
-            if(thisAspectRatio=="landscape"){
-                offsetAmt=1.5
+            if (thisAspectRatio == "landscape") {
+                offsetAmt = 1.5
             }
             let offsetAngle = Math.PI / 2
             let offsetX = Math.sin(euler.y + offsetAngle) * offsetAmt
@@ -1557,6 +1631,9 @@
 
 
                 let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz)
+                if("scale" in object){
+                    mesh.scale=new THREE.Vector3(object.scale[0],object.scale[1],object.scale[2])
+                }
 
                 //add audio
                 if (object["audioURL"]) {
