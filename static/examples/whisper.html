@@ -108,7 +108,7 @@
         }
 
         let ACTION_MODE = 1//create
-        let NUM_ACTION_MODES = 8
+        let NUM_ACTION_MODES = 9
 
         let near = 5
         let far = 15
@@ -413,6 +413,20 @@
                         getAudioReady();
                     }
 
+                    //resize is updated every frame
+                    //intermediate resize object
+                    if (mode == "RESIZE_OBJECT") {
+
+                        let endingControllerDist = controller1.position.clone().sub(controller2.position).length()
+                        let endingObjectScale = startingObjectScale * endingControllerDist / startingControllerDist
+
+                        console.log("foo", endingObjectScale)
+
+                        objectToMove.scale.set(endingObjectScale, endingObjectScale, endingObjectScale)
+
+                    }
+
+
 
                     for (const source of session.inputSources) {
                         if (source && source.handedness) {
@@ -671,9 +685,11 @@
                                 if (intersects_mesh.length > 0) {
                                     console.log("scaling")
                                     objectToMove = intersects_mesh[0].object
+
+                                    console.log("about to die", objectToMove, controller1, controller2)
+
                                     startingObjectScale = objectToMove.scale.x
-                                    startingControllerDist = controller1.position.copy().sub(controller2.position).length()
-                                    controller.attach(objectToMove);
+                                    startingControllerDist = controller1.position.clone().sub(controller2.position).length()
                                     mode = "RESIZE_OBJECT"
                                 } else {
                                     console.log("nothing to resize!")
@@ -681,15 +697,6 @@
 
                             }
 
-                            //intermediate resize object
-                            if (mode == "RESIZE_OBJECT") {
-
-                                let endingControllerDist = controller1.position.copy().sub(controller2.position).length()
-                                endingObjectScale = startingObjectScale * endingControllerDist / startingControllerDist
-
-                                objectToMove.scale = new THREE.Vector3(endingObjectScale, endingObjectScale, endingObjectScale)
-
-                            }
 
 
                             if (ACTION_MODES[ACTION_MODE] == "audio") {
@@ -864,10 +871,10 @@
 
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RESIZE_OBJECT") {
 
-                                let endingControllerDist = controller1.position.copy().sub(controller2.position).length()
-                                endingObjectScale = startingObjectScale * endingControllerDist / startingControllerDist
+                                let endingControllerDist = controller1.position.clone().sub(controller2.position).length()
+                                let endingObjectScale = startingObjectScale * endingControllerDist / startingControllerDist
 
-                                objectToMove.scale = new THREE.Vector3(endingObjectScale, endingObjectScale, endingObjectScale)
+                                objectToMove.scale.set(endingObjectScale, endingObjectScale, endingObjectScale)
 
                                 //todo save new position and rotation
                                 let key = objectToMove.userData["key"]
@@ -1631,8 +1638,8 @@
 
 
                 let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz)
-                if("scale" in object){
-                    mesh.scale=new THREE.Vector3(object.scale[0],object.scale[1],object.scale[2])
+                if ("scale" in object) {
+                    mesh.scale.set(object.scale[0], object.scale[1], object.scale[2])
                 }
 
                 //add audio
