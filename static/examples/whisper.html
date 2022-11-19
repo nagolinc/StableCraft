@@ -74,6 +74,9 @@
         let gridSize = 5
         let bgGenRange = 1
 
+        //floor
+        floorTiles = {}
+
         let aspect_ratios = {
             0: "square",
             1: "portrait",
@@ -209,6 +212,8 @@
                     turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
 
                     generateBackgroundObjects(cameraOffsetPosition)
+                    generateFloorTiles(cameraOffsetPosition)
+
 
                     hideDistanceObjects(cameraOffsetPosition)
 
@@ -1069,6 +1074,94 @@
             }
         }
 
+
+        async function getFloorTile(gridX, gridZ) {
+
+            //send prompt to server
+            let fd = new FormData();
+            fd.set("x0", gridX)
+            fd.set("x1", gridX + 1)
+            fd.set("y0", gridZ)
+            fd.set("y1", gridZ + 1)
+            fd.set("k", 11)
+
+            //fetch url from /tts endpoint
+            let response = await fetch("/noise2d", {
+                body: fd,
+                method: "POST"
+            })
+
+            let data = await response.json()
+
+            //build mesh
+            var geom = new THREE.Geometry();
+            for (var i = 0; i < 11; i++) {
+                for (var j = 0; j < 11; j++) {
+                    let x = i * gridSize / 10;
+                    let y = data[i][j]//heightmap
+                    let z = j * gridSize / 10;
+                    var v1 = new THREE.Vector3(x, y, z);
+                    geom.vertices.push(v1);
+                }
+            }
+
+            for (var i = 0; i < 10; i++) {
+                for (var j = 0; j < 10; j++) {
+                    //this square has coords
+                    /*
+                    v0 - v1
+                    |  /  |
+                    v2 - v3
+
+                    */
+                    let v0 = i * 11 + j
+                    let v1 = i * 11 + j + 1
+                    let v2 = (i + 1) * 11 + j
+                    let v3 = (i + 1) * 11 + j + 1
+
+                    geom.faces.push(new THREE.Face3(v0, v1, v2));
+                    geom.faces.push(new THREE.Face3(v1, v3, v2));
+                }
+            }
+
+            geom.vertices.push(v2);
+            geom.vertices.push(v3);
+
+            var object = new THREE.Mesh(geom, new THREE.MeshNormalMaterial());
+
+            //floorTiles[[i, j]] = object
+            let gridKey = `${gridX}_${gridZ}`
+            floorTiles[gridKey] = object
+
+            //set position
+            object.position.set(new THREE.Vector3(gridX*gridSize,0,gridZ*gridSize))
+
+            scene.addObject(object);
+
+            return object
+        }
+
+        async function generateFloorTiles(position) {
+
+            let _gridX = Math.floor(position.x / gridSize)
+            let _gridZ = Math.floor(position.z / gridSize)
+
+            for (let i = -bgGenRange; i < bgGenRange + 1; i++) {
+                for (let j = -bgGenRange; j < bgGenRange + 1; j++) {
+
+                    let gridX = _gridX + i
+                    let gridZ = _gridZ + j
+
+                    let gridKey = `${gridX}_${gridZ}`
+                    if (gridKey in gridToMeshes) {
+                        //do nothing
+                    } else {
+                        getFloorTile(gridX,gridZ)
+                    }
+                }
+            }
+        }
+
         async function generateBackgroundObjects(position) {
             let _gridX = Math.floor(position.x / gridSize)
             let _gridZ = Math.floor(position.z / gridSize)
@@ -1266,22 +1359,22 @@
             console.log("removing object", objectToRecreate)
             let indexToDelete = allMeshes.indexOf(objectToRecreate)
             if (indexToDelete >= 0) {
-
+ 
                 //delete caption
                 if (objectToRecreate.userData["caption"]) {
                     scene.remove(objectToRecreate.userData["caption"])
                     objectToRecreate.userData["caption"] = null
                 }
                 scene.remove(objectToRecreate)
-
+ 
                 allMeshes.splice(indexToDelete, 1)
             } else {
                 console.log("error, could not remove object!")
             }
-
+ 
             //I have to remove it from all objects
             
-
+ 
             console.log("delete save data for old object", key)
             let t = 0
             if (key) {

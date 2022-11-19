@@ -8,6 +8,9 @@ import os
 import random
 import re
 
+import json
+import dataset
+
 # @title
 import gradio
 import gradio as gr
@@ -27,6 +30,7 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           DPTFeatureExtractor, DPTForDepthEstimation, pipeline)
 
 from mubert import generate_track_by_prompt
+import opensimplex
 
 #import asyncio
 import threading
@@ -61,6 +65,8 @@ def setup(
     mubert_token = os.environ["MUBERT"]
 
     _login(HfApi(), token=hf_token)
+
+    db = dataset.connect('sqlite:///mydatabase.db')
 
     # text generation pipeline
     #tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-2.7B")
@@ -128,7 +134,6 @@ def setup(
             tokenizer=pipe.tokenizer,
             torch_dtype=torch.float16,
             use_auth_token=True,
-            cache_dir="./AI/StableDiffusion"
         )
         img2img.enable_attention_slicing()
         if use_xformers:
@@ -229,7 +234,7 @@ def setup(
         textInput = "\ndescription:\n".join([s.strip() for s in prompts])
         output = text_generator(textInput, max_new_tokens=max_new_tokens, return_full_text=False)[
             0]['generated_text']
-        print("got output", output)
+        #print("got output", output)
         rv = [s for s in output.split("\n") if len(
             s) > MIN_PROMPT_LENGTH and "description:" not in s]
 
@@ -470,6 +475,44 @@ def setup(
             "saveData": saveData,
         })
 
+    @app.route("/saveObject",methods=['POST'])
+    def saveObject():
+        _saveData = request.values['saveData']
+        saveData=json.parse(_saveData)
+        table = db['savedObjects']
+        #for now our keys will be {world,gridX,gridY,objectKey,objectNonce}
+        found=table.find_one(
+            world=saveData["world"],
+            gridX=saveData["gridX"],
+            gridY=saveData["gridY"],
+            objectKey=saveData["objectKey"],
+            objectNonce=saveData["objectNonce"]
+        )
+        if found is not None:
+            table.update(
+                dict(
+                    world=saveData["world"],
+                    gridX=saveData["gridX"],
+                    gridY=saveData["gridY"],
+                    objectKey=saveData["objectKey"],
+                    objectNonce=saveData["objectNonce"],
+                    data=_saveData
+                ),
+                ["world","gridx","gridY","objectKey","objectNonce"]                
+            )
+        else:
+            table.insert(
+                dict(
+                    world=saveData["world"],
+                    gridX=saveData["gridX"],
+                    gridY=saveData["gridY"],
+                    objectKey=saveData["objectKey"],
+                    objectNonce=saveData["objectNonce"],
+                    data=_saveData
+                )           
+            )
+
+
     @app.route("/getBackgroundObject")
     def getBackgroundObject():
         if len(generated_images)>0:
@@ -479,7 +522,25 @@ def setup(
             result=random.choice(used_images)
         return jsonify(result)
 
+    @app.route("/noise2d",methods=['POST'])
+    def noise2d():
+        x0 = request.values.get('x0')
+        x1 = request.values.get('x1')
+        y0 = request.values.get('y0')
+        y1 = request.values.get('y1')
+        k = request.values.get('k')
+
+        x=np.linspace(x0,x1,k)
+        y=np.linspace(y0,y1,k)
+        a=opensimplex.noise2array(x, y)
+
+        return jsonify([list(row) for row in a])
+
     return app
+
+    
+
+
 
 
 
