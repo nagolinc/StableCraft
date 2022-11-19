@@ -22,7 +22,7 @@ from diffusers import (DPMSolverMultistepScheduler,
 from diffusers.models import AutoencoderKL
 from flask import Flask, jsonify, request
 from flask_ngrok2 import run_with_ngrok
-from huggingface_hub.commands.user import _login
+import huggingface_hub.commands.user
 from huggingface_hub.hf_api import HfApi, HfFolder
 from PIL import Image, ImageFilter
 from torch import autocast
@@ -64,7 +64,7 @@ def setup(
 
     mubert_token = os.environ["MUBERT"]
 
-    _login(HfApi(), token=hf_token)
+    huggingface_hub.commands.user.login(token=hf_token)
 
     db = dataset.connect('sqlite:///mydatabase.db')
 
@@ -524,11 +524,11 @@ def setup(
 
     @app.route("/noise2d",methods=['POST'])
     def noise2d():
-        x0 = request.values.get('x0')
-        x1 = request.values.get('x1')
-        y0 = request.values.get('y0')
-        y1 = request.values.get('y1')
-        k = request.values.get('k')
+        x0 = request.values.get('x0',type=float)
+        x1 = request.values.get('x1',type=float)
+        y0 = request.values.get('y0',type=float)
+        y1 = request.values.get('y1',type=float)
+        k = request.values.get('k',type=int)
 
         x=np.linspace(x0,x1,k)
         y=np.linspace(y0,y1,k)
