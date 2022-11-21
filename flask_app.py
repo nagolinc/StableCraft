@@ -540,9 +540,9 @@ def setup(
                 objectKey=saveData["key"],
                 objectNonce=saveData["nonce"],
             )
-            return "object deleted"
+            return jsonify({"msg":"object deleted","object":found})
         else:
-            return "Object not found"
+            return jsonify({"msg":"Object not found"})
 
     @app.route("/loadObjects",methods=['POST'])
     def loadObjects():
@@ -554,10 +554,10 @@ def setup(
         table = db['savedObjects']
         #for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
         found=table.find(
-            user=saveData["user"],
-            world=saveData["world"],
-            gridX=saveData["gridX"],
-            gridZ=saveData["gridZ"],
+            user=user,
+            world=world,
+            gridX=gridX,
+            gridZ=gridZ,
         )
 
         return jsonify(list(found))

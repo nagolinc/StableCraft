@@ -171,7 +171,8 @@
             );
             scene.add(floor);
             floor.scale.set(2, 2, 2);*/
-            generateFloorTiles(camera.position)
+            //generateFloorTiles(camera.position)
+            updateWorld(camera.position)
 
 
             raycaster = new THREE.Raycaster();
@@ -227,9 +228,8 @@
                     const turn = new THREE.Quaternion()
                     turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
 
-                    loadGridObjects(cameraOffsetPosition)
-                    generateBackgroundObjects(cameraOffsetPosition)
-                    generateFloorTiles(cameraOffsetPosition)
+
+                    updateWorld(cameraOffsetPosition)
 
 
                     hideDistanceObjects(cameraOffsetPosition)
@@ -778,6 +778,22 @@
                                         console.log("deleting object with key", key)
                                         let t = 0
                                         if (key) {
+
+                                            //delete from database
+                                            let gridX = Math.floor(objectToDelete.position.x / gridSize)
+                                            let gridZ = Math.floor(objectToDelete.position.z / gridSize)
+
+
+                                            deleteThisObject({
+                                                "world": WORLD,
+                                                "user": USER,
+                                                "gridX": gridX,
+                                                "gridZ": gridZ,
+                                                "key": key,
+                                                "nonce": 0
+                                            })
+
+
                                             //find in saveData.objects
                                             for (var j in saveData.objects) {
                                                 if (saveData.objects[j]["key"] == key) {
@@ -867,6 +883,7 @@
                                 let key = objectToMove.userData["key"]
                                 console.log("saving new position of object with key", key)
                                 let t = 0
+                                let thisObject
                                 if (key) {
                                     //find in saveData.objects
                                     for (var j in saveData.objects) {
@@ -875,17 +892,27 @@
                                                 saveData.objects[j]["rotation"] = objectToMove.rotation.y,
                                                 saveData.objects[j]["rotation_xyz"] = [objectToMove.rotation.x, objectToMove.rotation.y, objectToMove.rotation.z],
                                                 t = 1
+                                            thisObject = saveData.objects[j]
                                             break
                                         }
                                     }
                                     if (t == 0) {
                                         console.log("key", key, "not found!")
+
+
+
+
                                     } else {
                                         console.log("saving")
                                         if (savePath != "NONE") {
                                             doSave()
+
+                                            //save object to dataset
+                                            saveObjectToDataset(thisObject)
                                         }
                                     }
+
+
 
                                 }
 
@@ -905,6 +932,7 @@
                                 let key = objectToMove.userData["key"]
                                 console.log("saving new position of object with key", key)
                                 let t = 0
+                                let thisObject
                                 if (key) {
                                     //find in saveData.objects
                                     for (var j in saveData.objects) {
@@ -914,6 +942,7 @@
                                                 saveData.objects[j]["rotation_xyz"] = [objectToMove.rotation.x, objectToMove.rotation.y, objectToMove.rotation.z],
                                                 saveData.objects[j]["scale"] = [objectToMove.scale.x, objectToMove.scale.y, objectToMove.scale.z],
                                                 t = 1
+                                            thisObject = saveData.objects[j]
                                             break
                                         }
                                     }
@@ -923,6 +952,10 @@
                                         console.log("saving")
                                         if (savePath != "NONE") {
                                             doSave()
+
+                                            //save object to dataset
+                                            saveObjectToDataset(thisObject)
+
                                         }
                                     }
 
@@ -1206,7 +1239,6 @@
 
             material.bumpMap = floorNormals
             material.bumpScale = 0.01
-            console.log(floorNormals, material)
 
             let mesh = new THREE.Mesh(geometry, material);
 
@@ -1234,7 +1266,7 @@
                         //do nothing
                     } else {
                         let tile = await getFloorTile(gridX, gridZ)
-                        console.log("added tile", gridX, gridZ, tile)
+                        //console.log("added tile", gridX, gridZ, tile)
 
                         floorTiles[gridKey] = tile
                         floorTiles_list.push(tile)
@@ -1346,7 +1378,9 @@
 
             console.log(data)
 
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key, nextCubeRotation_xyz)
+
+            let newKey = "KEY" + Math.random() + "_" + Math.random()
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz)
 
 
             console.log("removing object", objectToRecreate)
@@ -1360,6 +1394,8 @@
                 }
                 scene.remove(objectToRecreate)
 
+
+
                 allMeshes.splice(indexToDelete, 1)
             } else {
                 console.log("error, could not remove object!")
@@ -1371,12 +1407,14 @@
 
             console.log("delete save data for old object", key)
             let t = 0
+            let objectToDelete
             if (key) {
                 //find in saveData.objects
                 for (var j in saveData.objects) {
                     if (saveData.objects[j]["key"] == key) {
                         //remove old save data
                         console.log("removing object ", j, "with key", key, "from saveData")
+                        objectToDelete=saveData.objects[j]
                         saveData.objects.splice(j, 1)
                         t = 1
                         break
@@ -1388,6 +1426,19 @@
                     console.log("saving")
                     if (savePath != "NONE") {
                         doSave()
+                        //remove old object from database
+                        let gridX= Math.floor(objectToDelete["xyz"][0] / gridSize)
+                        let gridZ= Math.floor(objectToDelete["xyz"][2] / gridSize)
+                        let key = objectToDelete["key"]
+                        deleteThisObject({
+                                                "world": WORLD,
+                                                "user": USER,
+                                                "gridX": gridX,
+                                                "gridZ": gridZ,
+                                                "key": key,
+                                                "nonce": 0
+                                            })
+
                     }
                 }
             }
@@ -1453,7 +1504,10 @@
 
             console.log(data)
 
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key, nextCubeRotation_xyz)
+
+            let newKey = "KEY" + Math.random() + "_" + Math.random()
+
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz)
 
 
 
@@ -1523,6 +1577,7 @@
                 let key = objectToRecreate.userData["key"]
                 console.log("save audio", key)
                 let t = 0
+                let thisObject
                 if (key) {
                     //find in saveData.objects
                     for (var j in saveData.objects) {
@@ -1531,6 +1586,7 @@
                             console.log("removing audio to object ", j, "with key", key, "from saveData")
                             delete saveData.objects[j]["audioURL"]
                             t = 1
+                            thisObject=saveData.objects[j]
                             break
                         }
                     }
@@ -1540,6 +1596,9 @@
                         console.log("saving")
                         if (savePath != "NONE") {
                             doSave()
+
+                            //save object to dataset
+                            saveObjectToDataset(thisObject)
                         }
                     }
                 }
@@ -1668,12 +1727,44 @@
 
         }
 
+
+        async function deleteThisObject(someObject) {
+
+            let fd = new FormData();
+            fd.append("saveData", JSON.stringify(someObject));
+
+            //fetch url from /tts endpoint
+            let response = await fetch("/deleteObject", {
+                body: fd,
+                method: "POST"
+            })
+            let data = await response.json()
+            console.log(data)
+        }
+
+        async function updateWorld(position) {
+            await generateFloorTiles(position)
+            await loadGridObjects(position)
+            await generateBackgroundObjects(position)
+        }
+
         async function loadGridObjects(position) {
 
-            let gridX = Math.floor(mesh.position.x / gridSize)
-            let gridZ = Math.floor(mesh.position.z / gridSize)
+            let gridX = Math.floor(position.x / gridSize)
+            let gridZ = Math.floor(position.z / gridSize)
+
+            for (var i = -bgGenRange_floor; i <= bgGenRange_floor; i++) {
+                for (var j = -bgGenRange_floor; j <= bgGenRange_floor; j++) {
+                    await loadTheseGridObjects(gridX + i, gridZ + j)
+
+                }
+            }
+
+        }
+
+        async function loadTheseGridObjects(gridX, gridZ) {
+
             let gridKey = `${gridX}_${gridZ}`
-            console.log(data)
 
 
             let fd = new FormData();
@@ -1692,16 +1783,22 @@
 
             //add objects if not already added
 
-            console.log(data)
+            //console.log(data)
             if (!data) return
 
-            for (var object of data.objects) {
+            for (var _object of data) {
+
+                let object = JSON.parse(_object["data"])
+
+                console.log("adding object", object["name"])
 
                 let t = 0
-                for (var gridObject of gridToMeshes[gridKey]) {
-                    if (gridObject.userData["key"] == object["key"]) {
-                        t = 1
-                        break
+                if (gridKey in gridToMeshes) {
+                    for (var gridObject of gridToMeshes[gridKey]) {
+                        if (gridObject.userData["key"] == object["key"]) {
+                            t = 1
+                            break
+                        }
                     }
                 }
 
@@ -1758,6 +1855,8 @@
                         }
 
                     }
+
+                    saveData.objects.push(object)
 
 
                 }
@@ -1842,7 +1941,7 @@
             let gridX = Math.floor(mesh.position.x / gridSize)
             let gridZ = Math.floor(mesh.position.z / gridSize)
             let gridKey = `${gridX}_${gridZ}`
-            if (key in gridToMeshes) {
+            if (gridKey in gridToMeshes) {
                 gridToMeshes[gridKey].push(mesh)
             } else {
                 gridToMeshes[gridKey] = [mesh]

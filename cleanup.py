@@ -1,3 +1,5 @@
+#
+
 import os
 import glob
 
@@ -9,3 +11,7 @@ saves=glob.glob("./static/saveData/*")
 for save in saves:
     if save!=".gitkeep":
         os.remove(save)
+
+db=glob.glob("./mydatabase*")        
+for f in db:
+    os.remove(f)        
