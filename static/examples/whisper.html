@@ -50,19 +50,23 @@
         //save load logic
         const queryString = window.location.search;
         const urlParams = new URLSearchParams(queryString);
-        let savePath
+        let saveName
         if (urlParams.get("savePath")) {
-            savePath = urlParams.get("savePath")
+            saveName = urlParams.get("saveName")
         } else {
-            savePath = "saveData0.json"
+            saveName = "world0"
         }
+        let savePath = saveName + ".json"
+
+        let WORLD = saveName
+        let USER = "user0"//todo fixme
 
         let saveData = {
             "objects": []
         }
 
         if (savePath != "NONE") {
-            doLoad(savePath)
+            //doLoad(savePath)
         }
 
 
@@ -81,7 +85,7 @@
         let terrainScale = 0.1
         let terrainScaleY = 5
         let playerHeight = 1.5
-        let seaLevel=0.25
+        let seaLevel = 0.3
         const textureLoader = new THREE.TextureLoader();
         const floorNormals = textureLoader.load("./noise.png");
 
@@ -223,6 +227,7 @@
                     const turn = new THREE.Quaternion()
                     turn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
 
+                    loadGridObjects(cameraOffsetPosition)
                     generateBackgroundObjects(cameraOffsetPosition)
                     generateFloorTiles(cameraOffsetPosition)
 
@@ -301,7 +306,7 @@
                     geometry = new THREE.BufferGeometry();
                     geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, - 1], 3));
                     geometry.setAttribute('color', new THREE.Float32BufferAttribute([0.5, 0.5, 0.5, 0, 0, 0], 3));
-                    
+
 
                     material = new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending });
 
@@ -1129,7 +1134,7 @@
             const vertices = [];
             const normals = [];
             const colors = [];
-            const uvs=[];
+            const uvs = [];
 
             const size = gridSize;
             const segments = 10;
@@ -1153,7 +1158,7 @@
 
                     vertices.push(x, y, z);
                     normals.push(0, 0, 1);
-                    uvs.push(i/segments,j/segments)
+                    uvs.push(i / segments, j / segments)
 
                     //const r = (x / size) + 0.5;
                     //const g = (y / size) + 0.5;
@@ -1191,17 +1196,17 @@
             geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
             geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
             geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            geometry.setAttribute( 'uv', new THREE.Float32BufferAttribute( uvs, 2 ) );
+            geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
 
-            
+
             const material = new THREE.MeshStandardMaterial({
                 side: THREE.DoubleSide,
                 vertexColors: true
             });
 
-            material.bumpMap=floorNormals
-            material.bumpScale=0.01
-            console.log(floorNormals,material)
+            material.bumpMap = floorNormals
+            material.bumpScale = 0.01
+            console.log(floorNormals, material)
 
             let mesh = new THREE.Mesh(geometry, material);
 
@@ -1647,6 +1652,120 @@
 
         }
 
+        async function saveObjectToDataset(someObject) {
+
+            let fd = new FormData();
+            fd.append("savePath", savePath);
+            fd.append("saveData", JSON.stringify(someObject));
+
+            //fetch url from /tts endpoint
+            let response = await fetch("/saveObject", {
+                body: fd,
+                method: "POST"
+            })
+            let data = await response.json()
+            console.log(data)
+
+        }
+
+        async function loadGridObjects(position) {
+
+            let gridX = Math.floor(mesh.position.x / gridSize)
+            let gridZ = Math.floor(mesh.position.z / gridSize)
+            let gridKey = `${gridX}_${gridZ}`
+            console.log(data)
+
+
+            let fd = new FormData();
+            fd.append("user", USER);
+            fd.append("world", WORLD);
+            fd.append("gridX", gridX);
+            fd.append("gridZ", gridZ);
+
+            //fetch url from /tts endpoint
+            let response = await fetch("/loadObjects", {
+                body: fd,
+                method: "POST"
+            })
+            let data = await response.json()
+
+
+            //add objects if not already added
+
+            console.log(data)
+            if (!data) return
+
+            for (var object of data.objects) {
+
+                let t = 0
+                for (var gridObject of gridToMeshes[gridKey]) {
+                    if (gridObject.userData["key"] == object["key"]) {
+                        t = 1
+                        break
+                    }
+                }
+
+                if (t == 1) {
+                    continue
+                } else {
+
+
+                    let position = new THREE.Vector3(object.xyz[0], object.xyz[1], object.xyz[2])
+                    let rotation = object.rotation
+                    let d = [object.name, object.map, object.disp, object.edge]
+                    let thisAspectRatio = object.aspect_ratio
+                    let key = object.key
+                    console.log("adding object", d, position, rotation, thisAspectRatio, key)
+
+
+                    let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz)
+                    if ("scale" in object) {
+                        mesh.scale.set(object.scale[0], object.scale[1], object.scale[2])
+                    }
+
+                    //add audio
+                    if (object["audioURL"]) {
+
+                        let audioURL = object["audioURL"]
+
+                        if (audioReady) {
+
+                            // create an AudioListener and add it to the camera
+                            const listener = new THREE.AudioListener();
+                            camera.add(listener);
+
+                            // create the PositionalAudio object (passing in the listener)
+                            const sound = new THREE.PositionalAudio(listener);
+
+                            // load a sound and set it as the PositionalAudio object's buffer
+                            const audioLoader = new THREE.AudioLoader();
+                            audioLoader.load(audioURL, function (buffer) {
+                                sound.setBuffer(buffer);
+                                sound.setRefDistance(AUDIO_REF_DIST);
+                                sound.setLoop(true)
+                                sound.play();
+
+                            });
+
+                            //attach to mesth
+
+                            //add sound to object
+                            mesh.userData["audio"] = sound
+                            mesh.add(sound)
+
+                        } else {
+                            audioTodo.push([mesh, audioURL])
+                        }
+
+                    }
+
+
+                }
+            }
+
+
+        }
+
 
         function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz) {
             let imgPath = "../samples/" + data[1]
@@ -1719,10 +1838,26 @@
             //store mesh in allMeshes
             allMeshes.push(mesh)
 
+            //add mesh to grid
+            let gridX = Math.floor(mesh.position.x / gridSize)
+            let gridZ = Math.floor(mesh.position.z / gridSize)
+            let gridKey = `${gridX}_${gridZ}`
+            if (key in gridToMeshes) {
+                gridToMeshes[gridKey].push(mesh)
+            } else {
+                gridToMeshes[gridKey] = [mesh]
+            }
+
+
             if (saveThisObject) {
 
                 let thisObject = {
+                    "gridX": gridX,
+                    "gridZ": gridZ,
+                    "user": USER,
+                    "world": WORLD,
                     "key": key,
+                    "nonce": 0,
                     "name": data[0],
                     "map": data[1],
                     "disp": data[2],
@@ -1732,6 +1867,9 @@
                     "rotation_xyz": [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
                     "aspect_ratio": thisAspectRatio,
                 }
+
+                //save object to dataset
+                saveObjectToDataset(thisObject)
 
                 saveData.objects.push(thisObject)
 
@@ -1743,15 +1881,6 @@
 
             }
 
-            //add mesh to grid
-            let gridX = Math.floor(mesh.position.x / gridSize)
-            let gridZ = Math.floor(mesh.position.z / gridSize)
-            let gridKey = `${gridX}_${gridZ}`
-            if (key in gridToMeshes) {
-                gridToMeshes[gridKey].push(mesh)
-            } else {
-                gridToMeshes[gridKey] = [mesh]
-            }
 
             return mesh
         }

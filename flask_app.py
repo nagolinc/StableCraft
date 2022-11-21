@@ -50,7 +50,7 @@ def setup(
     edgeWidth=3,
     blurRadius=4,
     suffix="4k dslr",
-    MAX_GEN_IMAGES=18,
+    MAX_GEN_IMAGES=1,
     use_xformers=True
 ):
     global base_count
@@ -149,11 +149,11 @@ def setup(
     model = DPTForDepthEstimation.from_pretrained(
         "Intel/dpt-large", cache_dir="./AI/StableDiffusion")
 
-    default_prompts = ["epic fantasy painting by Greg Rutkowski",
-                       "anime drawing of Joe Biden as a character from Jojo's bizzare adventure",
-                       "gelatinous cube from dungeons and dragons, unreal engine 5, ray tracing, trending on artstation",
-                       "award winning national geographic photograph of a bear hugging a penguin",
-                       "painting of Kim Kardashian as the Mona Lisa"
+    default_prompts = ["an owl bear",
+                       "a dwarf warrior with a huge ax",
+                       "gelatinous cube from dungeons and dragons",
+                       "an blonde elf warrior holding a bow",
+                       "an ancient stone with mysterious runes carved on it"
                        ]
 
     all_prompts = []
@@ -352,7 +352,7 @@ def setup(
 
     def generateBackgroundObjects(lock,waitingAmount=3):
         while True:
-            if lock.locked() or jobs_count>0 or len(generated_images)>MAX_GEN_IMAGES:
+            if lock.locked() or jobs_count>0 or len(generated_images)>=MAX_GEN_IMAGES:
                 time.sleep(waitingAmount)
             else:
                 print("generating object in background")
@@ -478,39 +478,90 @@ def setup(
     @app.route("/saveObject",methods=['POST'])
     def saveObject():
         _saveData = request.values['saveData']
-        saveData=json.parse(_saveData)
+        saveData=json.loads(_saveData)
         table = db['savedObjects']
-        #for now our keys will be {world,gridX,gridY,objectKey,objectNonce}
+        #for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
         found=table.find_one(
+            user=saveData["user"],
             world=saveData["world"],
             gridX=saveData["gridX"],
-            gridY=saveData["gridY"],
-            objectKey=saveData["objectKey"],
-            objectNonce=saveData["objectNonce"]
+            gridZ=saveData["gridZ"],
+            objectKey=saveData["key"],
+            objectNonce=saveData["nonce"]
         )
         if found is not None:
             table.update(
                 dict(
+                    user=saveData["user"],
                     world=saveData["world"],
                     gridX=saveData["gridX"],
-                    gridY=saveData["gridY"],
-                    objectKey=saveData["objectKey"],
-                    objectNonce=saveData["objectNonce"],
+                    gridZ=saveData["gridZ"],
+                    objectKey=saveData["key"],
+                    objectNonce=saveData["nonce"],
                     data=_saveData
                 ),
-                ["world","gridx","gridY","objectKey","objectNonce"]                
+                ["user","world","gridx","gridZ","objectKey","objectNonce"]                
             )
         else:
             table.insert(
                 dict(
+                    user=saveData["user"],
                     world=saveData["world"],
                     gridX=saveData["gridX"],
-                    gridY=saveData["gridY"],
-                    objectKey=saveData["objectKey"],
-                    objectNonce=saveData["objectNonce"],
+                    gridZ=saveData["gridZ"],
+                    objectKey=saveData["key"],
+                    objectNonce=saveData["nonce"],
                     data=_saveData
                 )           
             )
+
+        return jsonify(saveData)
+
+    @app.route("/deleteObject",methods=['POST'])
+    def deleteObject():
+        _saveData = request.values['saveData']
+        saveData=json.loads(_saveData)
+        table = db['savedObjects']
+        #for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
+        found=table.find_one(
+            user=saveData["user"],
+            world=saveData["world"],
+            gridX=saveData["gridX"],
+            gridZ=saveData["gridZ"],
+            objectKey=saveData["key"],
+            objectNonce=saveData["nonce"]
+        )
+        if found is not None:
+            table.delete(
+                user=saveData["user"],
+                world=saveData["world"],
+                gridX=saveData["gridX"],
+                gridZ=saveData["gridZ"],
+                objectKey=saveData["key"],
+                objectNonce=saveData["nonce"],
+            )
+            return "object deleted"
+        else:
+            return "Object not found"
+
+    @app.route("/loadObjects",methods=['POST'])
+    def loadObjects():
+        user = request.values['user']
+        world = request.values['world']
+        gridX = request.values['gridX']
+        gridZ = request.values['gridZ']
+        
+        table = db['savedObjects']
+        #for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
+        found=table.find(
+            user=saveData["user"],
+            world=saveData["world"],
+            gridX=saveData["gridX"],
+            gridZ=saveData["gridZ"],
+        )
+
+        return jsonify(list(found))
+    
 
 
     @app.route("/getBackgroundObject")
@@ -530,9 +581,14 @@ def setup(
         y1 = request.values.get('y1',type=float)
         k = request.values.get('k',type=int)
 
+
+        fractalScale=5
+
         x=np.linspace(x0,x1,k)
         y=np.linspace(y0,y1,k)
-        a=opensimplex.noise2array(x, y)
+        a1=opensimplex.noise2array(x, y)
+        a2=opensimplex.noise2array(x*fractalScale, y*fractalScale)
+        a=(a1+0.5*a2)/1.5
 
         return jsonify([list(row) for row in a])
 
