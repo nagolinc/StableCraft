@@ -50,8 +50,9 @@ def setup(
     edgeWidth=3,
     blurRadius=4,
     suffix="4k dslr",
-    MAX_GEN_IMAGES=1,
-    use_xformers=True
+    MAX_GEN_IMAGES=18,
+    use_xformers=True,
+    negative_prompt="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body"
 ):
     global base_count
     # some constants that matter
@@ -101,7 +102,7 @@ def setup(
             scheduler=scheduler,
             vae=vae,
             torch_dtype=torch.float16,
-            safety_checker=safety_checker,
+            safety_checker=None,
             use_auth_token=True
         )
     else:
@@ -112,7 +113,7 @@ def setup(
             scheduler=scheduler,
             vae=vae,
             torch_dtype=torch.float16,
-            safety_checker=safety_checker,
+            safety_checker=None,
             use_auth_token=True
         )
 
@@ -178,8 +179,7 @@ def setup(
         with autocast("cuda"):
             image = pipe(
                 [prompt],
-                negative_prompt=[
-                    "grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body"],
+                negative_prompt=[negative_prompt],
                 guidance_scale=7.5,
                 num_inference_steps=num_inference_steps,
                 height=height,
@@ -321,7 +321,14 @@ def setup(
         edgePath = os.path.join(sample_path, edgeName)
         edge_mask.save(edgePath)
 
-        result= [prompt, imgName, depthName,edgeName]
+        background=None #todo:fixme
+
+        result= {"name":prompt,
+            "img":imgName, 
+            "depth":depthName,
+            "edge":edgeName,
+            "bg":background
+        }
         lock.release()
         return result
         #fut.set_result(result)
@@ -362,7 +369,7 @@ def setup(
                 width,height=ratioToSize[aspect_ratio]
                 seed=-1
                 bgObject = getImageWithPrompt(lock,prompt,width,height,seed)
-                bgObject += [aspect_ratio]
+                bgObject["aspectRatio"] = aspect_ratio
                 generated_images.append(bgObject)
             
 
@@ -615,6 +622,8 @@ if __name__ == '__main__':
     parser.add_argument('--edgeWidth', type=int, default=3)
     parser.add_argument('--blurRadius', type=float, default=4)
     parser.add_argument('--noXformers', action='store_false')
+    parser.add_argument('--maxGenImages',type=int, default=18)
+    parser.add_argument('--negativePrompt',default="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body")
     args = parser.parse_args()
     print("args", args)
     app = setup(
@@ -627,6 +636,8 @@ if __name__ == '__main__':
         img2imgSize=args.img2img_size,
         blurRadius=args.blurRadius,
         suffix=args.suffix,
-        use_xformers=args.noXformers
+        use_xformers=args.noXformers,
+        MAX_GEN_IMAGES=args.maxGenImages,
+        negative_prompt=args.negativePrompt
     )
     app.run()

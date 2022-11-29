@@ -58,6 +58,12 @@
         }
         let savePath = saveName + ".json"
 
+
+        let baseSize = 512
+        if (urlParams.get("modelSize768")) {
+            baseSize = 768
+        }
+
         let WORLD = saveName
         let USER = "user0"//todo fixme
 
@@ -113,9 +119,10 @@
             3: "recreate",
             4: "delete",
             5: "aspect ratio",
-            6: "audio",
-            7: "resize",
-            8: "move",
+            6: "object type",
+            7: "audio",
+            8: "resize",
+            9: "move",
 
         }
         let ACTION_MODE_TO_INDEX = {}
@@ -124,7 +131,22 @@
         }
 
         let ACTION_MODE = 1//create
-        let NUM_ACTION_MODES = 9
+        let NUM_ACTION_MODES = 10
+
+        //object type
+        let OBJECT_TYPES = {
+            0: "Object",
+            1: "NPC",
+            2: "Building",
+            3: "Plant",
+            4: "Tree",
+            5: "Mob",
+            6: "Boss",
+        }
+
+        let CURRENT_OBJECT_TYPE = 0
+        let NUM_OBJECT_TYPES = 7
+        let OBJECT_TYPE = OBJECT_TYPES[CURRENT_OBJECT_TYPE]//"Object"
 
         let near = 5
         let far = 15
@@ -679,6 +701,23 @@
 
                             }
 
+
+
+                            if (ACTION_MODES[ACTION_MODE] == "object type") {
+                                CURRENT_OBJECT_TYPE = (CURRENT_OBJECT_TYPE + 1) % NUM_OBJECT_TYPES
+                                OBJECT_TYPE = OBJECT_TYPE[CURRENT_OBJECT_TYPE]
+
+                                console.log("object type", OBJECT_TYPE)
+
+                                set_gui_text(controller, OBJECT_TYPE)
+
+
+                                //todo: display this somewhere
+
+                                mode = "CHANGE_OBJECT_TYPE"
+
+                            }
+
                             if (ACTION_MODES[ACTION_MODE] == "move") {
 
                                 //check if we want to delete
@@ -871,6 +910,15 @@
                                 set_gui_text(controller, "")
 
                                 console.log("changed aspect ratio")
+                                mode = "NONE"
+
+                            }
+
+                            if (data.handedness == "right" && data.buttons[4] == 0 && mode == "CHANGE_OBJECT_TYPE") {
+
+                                set_gui_text(controller, "")
+
+                                console.log("changed objet type")
                                 mode = "NONE"
 
                             }
@@ -1080,7 +1128,7 @@
 
         }
 
-        async function play(nextCubePosition, nextCubeRotation) {
+        async function play(nextCubePosition, nextCubeRotation, objectType) {
 
             let thisAspectRatio = aspect_ratio
 
@@ -1091,13 +1139,34 @@
             let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
             console.log("added placeholder")
 
+            let width = baseSize
+            let height = baseSize
+
+            if (thisAspectRatio == "portrait") {
+                if (baseSize == 512) {
+                    height = 768
+                } else {
+                    height = 1152
+                }
+
+
+            } else if (thisAspectRatio == "landscape") {
+                if (baseSize == 512) {
+                    width = 768
+                } else {
+                    width = 1152
+                }
+            }
+
+
             //send blob to server
             let fd = new FormData();
-            if (thisAspectRatio == "portrait") {
-                fd.set("height", 768)
-            } else if (thisAspectRatio == "landscape") {
-                fd.set("width", 768)
-            }
+
+
+            fd.set("width", width)
+            fd.set("height", height)
+            fd.set("objectType": objectType)
+
 
             fd.append("audio_data", superBuffer);
 
@@ -1111,7 +1180,7 @@
             console.log(data)
 
             let key = "KEY" + Math.random() + "_" + Math.random()
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key)
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key, objectType)
             scene.remove(placeholder)
 
         }
@@ -1326,10 +1395,11 @@
 
                         console.log(data)
 
-                        let aspectRatio = data[4]
+                        let aspectRatio = data["aspectRatio"]
+                        let objectType = data["objectType"]
 
                         let key = "KEY" + Math.random() + "_" + Math.random()
-                        add3dImage(data, nextCubePosition, nextCubeRotation, true, aspectRatio, key)
+                        add3dImage(data, nextCubePosition, nextCubeRotation, true, aspectRatio, key, objectType)
                         scene.remove(placeholder)
                     }
 
@@ -1377,10 +1447,11 @@
             let data = await response.json()
 
             console.log(data)
+            objectType = data["objectType"]
 
 
             let newKey = "KEY" + Math.random() + "_" + Math.random()
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz)
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz, objectType)
 
 
             console.log("removing object", objectToRecreate)
@@ -1414,7 +1485,7 @@
                     if (saveData.objects[j]["key"] == key) {
                         //remove old save data
                         console.log("removing object ", j, "with key", key, "from saveData")
-                        objectToDelete=saveData.objects[j]
+                        objectToDelete = saveData.objects[j]
                         saveData.objects.splice(j, 1)
                         t = 1
                         break
@@ -1427,17 +1498,17 @@
                     if (savePath != "NONE") {
                         doSave()
                         //remove old object from database
-                        let gridX= Math.floor(objectToDelete["xyz"][0] / gridSize)
-                        let gridZ= Math.floor(objectToDelete["xyz"][2] / gridSize)
+                        let gridX = Math.floor(objectToDelete["xyz"][0] / gridSize)
+                        let gridZ = Math.floor(objectToDelete["xyz"][2] / gridSize)
                         let key = objectToDelete["key"]
                         deleteThisObject({
-                                                "world": WORLD,
-                                                "user": USER,
-                                                "gridX": gridX,
-                                                "gridZ": gridZ,
-                                                "key": key,
-                                                "nonce": 0
-                                            })
+                            "world": WORLD,
+                            "user": USER,
+                            "gridX": gridX,
+                            "gridZ": gridZ,
+                            "key": key,
+                            "nonce": 0
+                        })
 
                     }
                 }
@@ -1453,6 +1524,7 @@
             let key = objectToRecreate.userData["key"]
 
             let prompt = objectToRecreate.userData["prompt"]
+            let thisObjectType = objectToRecreate.userData["objectType"]
             let thisAspectRatio = objectToRecreate.userData["aspect_ratio"]
             let nextCubePosition = objectToRecreate.position.clone()
             let nextCubeRotation = objectToRecreate.rotation.y
@@ -1487,6 +1559,8 @@
                 fd.set("width", 768)
             }
 
+            fd.set("objectType", thisObjectType)
+
             //fetch url from /tts endpoint
             let response = await fetch("/genPrompt", {
                 body: fd,
@@ -1503,11 +1577,12 @@
             let data = await response.json()
 
             console.log(data)
+            let objectType = data["objectType"]
 
 
             let newKey = "KEY" + Math.random() + "_" + Math.random()
 
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz)
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz, objectType)
 
 
 
@@ -1586,7 +1661,7 @@
                             console.log("removing audio to object ", j, "with key", key, "from saveData")
                             delete saveData.objects[j]["audioURL"]
                             t = 1
-                            thisObject=saveData.objects[j]
+                            thisObject = saveData.objects[j]
                             break
                         }
                     }
@@ -1705,7 +1780,7 @@
             scene.remove(placeholderCube)
 
             function doPlay() {
-                play(nextCubePosition, nextCubeRotation)
+                play(nextCubePosition, nextCubeRotation, OBJECT_TYPE)
             }
             setTimeout(doPlay, 0.1)
 
@@ -1809,13 +1884,19 @@
 
                     let position = new THREE.Vector3(object.xyz[0], object.xyz[1], object.xyz[2])
                     let rotation = object.rotation
-                    let d = [object.name, object.map, object.disp, object.edge]
+                    let d = {
+                        "name": object.name,
+                        "img": object.map,
+                        "displacement": object.disp,
+                        "edges": object.edge,
+                        "bg": object.bg
+                    }
                     let thisAspectRatio = object.aspect_ratio
                     let key = object.key
                     console.log("adding object", d, position, rotation, thisAspectRatio, key)
 
 
-                    let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz)
+                    let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz, objectType)
                     if ("scale" in object) {
                         mesh.scale.set(object.scale[0], object.scale[1], object.scale[2])
                     }
@@ -1866,18 +1947,23 @@
         }
 
 
-        function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz) {
-            let imgPath = "../samples/" + data[1]
-            let dPath = "../samples/" + data[2]
+        function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz, objectType) {
+            let imgPath = "../samples/" + data["img"]
+            let dPath = "../samples/" + data["displacement"]
 
             const textureLoader = new THREE.TextureLoader();
             const colorMap = textureLoader.load(imgPath);
             const displacementMap = textureLoader.load(dPath);
 
-            let edgeMap;
-            if (data.length > 3 && data[3]) {
-                let ePath = "../samples/" + data[3]
-                edgeMap = textureLoader.load(ePath);
+
+            let ePath = "../samples/" + data["edge"]
+            let edgeMap = textureLoader.load(ePath);
+
+            let displacementBias = -0.5
+            let displacementScale = 1.0
+
+            if (objectType == "building") {
+                let displacementScale = 0.1
             }
 
             let material;
@@ -1895,8 +1981,8 @@
                 material = new THREE.MeshStandardMaterial({
                     map: colorMap,
                     displacementMap: displacementMap,
-                    displacementScale: 1.0,
-                    displacementBias: -0.5, // from original model
+                    displacementScale: displacementScale,
+                    displacementBias: displacementBias, // from original model
                     side: THREE.DoubleSide
                 });
 
@@ -1916,6 +2002,11 @@
             } else {
                 //square
                 geometry = new THREE.PlaneGeometry(1, 1, 100, 100);
+            }
+
+            //building
+            if (objectType == "building") {
+                geometry = new THREE.BoxGeometry(10, 10, 10, 100, 100, 100);
             }
 
             let mesh = new THREE.Mesh(geometry, material);
