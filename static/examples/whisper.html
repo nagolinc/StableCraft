@@ -142,10 +142,11 @@
             4: "Tree",
             5: "Mob",
             6: "Boss",
+            7: "Fish",
         }
 
         let CURRENT_OBJECT_TYPE = 0
-        let NUM_OBJECT_TYPES = 7
+        let NUM_OBJECT_TYPES = 8
         let OBJECT_TYPE = OBJECT_TYPES[CURRENT_OBJECT_TYPE]//"Object"
 
         let near = 5
@@ -377,13 +378,16 @@
 
                 //check for intersects with meshs
                 const intersects_mesh = raycaster.intersectObjects(allMeshes);
-                if (intersects_mesh.length > 0) {
+                /*if (intersects_mesh.length > 0) {
                     //displayCaption(intersects_mesh[0].object)
                     TARGET_OBJECT = intersects_mesh[0].object
                 } else {
                     //hideAllCaptions()
                     TARGET_OBJECT = null
-                }
+                }*/
+                //only do this for right hand
+                TARGET_OBJECT = null
+
 
                 //const intersects = raycaster.intersectObjects([floor]);
                 const intersects = raycaster.intersectObjects(floorTiles_list);
@@ -705,7 +709,7 @@
 
                             if (ACTION_MODES[ACTION_MODE] == "object type") {
                                 CURRENT_OBJECT_TYPE = (CURRENT_OBJECT_TYPE + 1) % NUM_OBJECT_TYPES
-                                OBJECT_TYPE = OBJECT_TYPE[CURRENT_OBJECT_TYPE]
+                                OBJECT_TYPE = OBJECT_TYPES[CURRENT_OBJECT_TYPE]
 
                                 console.log("object type", OBJECT_TYPE)
 
@@ -786,9 +790,12 @@
 
                         } else {
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RECORDING") {
-                                console.log("stop recording")
+                                
+                                let objectType=OBJECT_TYPE
 
-                                stopRecording(nextCubePosition, nextCubeRotation)
+                                console.log("stop recording",objectType)
+
+                                stopRecording(nextCubePosition, nextCubeRotation,objectType)
                                 mode = "NONE"
                             }
 
@@ -1165,7 +1172,7 @@
 
             fd.set("width", width)
             fd.set("height", height)
-            fd.set("objectType": objectType)
+            fd.set("objectType", objectType)
 
 
             fd.append("audio_data", superBuffer);
@@ -1180,7 +1187,7 @@
             console.log(data)
 
             let key = "KEY" + Math.random() + "_" + Math.random()
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key, objectType)
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key,null, objectType)
             scene.remove(placeholder)
 
         }
@@ -1399,7 +1406,7 @@
                         let objectType = data["objectType"]
 
                         let key = "KEY" + Math.random() + "_" + Math.random()
-                        add3dImage(data, nextCubePosition, nextCubeRotation, true, aspectRatio, key, objectType)
+                        add3dImage(data, nextCubePosition, nextCubeRotation, true, aspectRatio, key, null, objectType)
                         scene.remove(placeholder)
                     }
 
@@ -1771,7 +1778,7 @@
 
         }
 
-        function stopRecording(nextCubePosition, nextCubeRotation) {
+        function stopRecording(nextCubePosition, nextCubeRotation,objectType) {
 
             if (!mediaRecorder) return
 
@@ -1780,7 +1787,7 @@
             scene.remove(placeholderCube)
 
             function doPlay() {
-                play(nextCubePosition, nextCubeRotation, OBJECT_TYPE)
+                play(nextCubePosition, nextCubeRotation, objectType)
             }
             setTimeout(doPlay, 0.1)
 
@@ -1887,16 +1894,17 @@
                     let d = {
                         "name": object.name,
                         "img": object.map,
-                        "displacement": object.disp,
-                        "edges": object.edge,
-                        "bg": object.bg
+                        "depth": object.disp,
+                        "edge": object.edge,
+                        "bg": object.bg,
+                        "objectType":object.objectType
                     }
                     let thisAspectRatio = object.aspect_ratio
                     let key = object.key
                     console.log("adding object", d, position, rotation, thisAspectRatio, key)
 
 
-                    let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz, objectType)
+                    let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz, object.objectType)
                     if ("scale" in object) {
                         mesh.scale.set(object.scale[0], object.scale[1], object.scale[2])
                     }
@@ -1949,7 +1957,7 @@
 
         function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz, objectType) {
             let imgPath = "../samples/" + data["img"]
-            let dPath = "../samples/" + data["displacement"]
+            let dPath = "../samples/" + data["depth"]
 
             const textureLoader = new THREE.TextureLoader();
             const colorMap = textureLoader.load(imgPath);
@@ -1962,7 +1970,7 @@
             let displacementBias = -0.5
             let displacementScale = 1.0
 
-            if (objectType == "building") {
+            if (objectType == "Building") {
                 let displacementScale = 0.1
             }
 
@@ -2005,11 +2013,14 @@
             }
 
             //building
-            if (objectType == "building") {
+            if (objectType == "Building") {
                 geometry = new THREE.BoxGeometry(10, 10, 10, 100, 100, 100);
             }
 
             let mesh = new THREE.Mesh(geometry, material);
+
+            console.log("adding mesh",mesh)
+
             scene.add(mesh);
             //mesh.rotation.y = rotation - Math.PI / 2;
             mesh.rotation.y = rotation;
@@ -2021,9 +2032,10 @@
             }
 
             //save prompt to userdata
-            mesh.userData["prompt"] = data[0]
+            mesh.userData["prompt"] = data["name"]
             mesh.userData["key"] = key
             mesh.userData["aspect_ratio"] = thisAspectRatio
+            mesh.userData["objectType"]=objectType
 
             //store mesh in allMeshes
             allMeshes.push(mesh)
@@ -2048,14 +2060,15 @@
                     "world": WORLD,
                     "key": key,
                     "nonce": 0,
-                    "name": data[0],
-                    "map": data[1],
-                    "disp": data[2],
-                    "edge": data[3],
+                    "name": data["name"],
+                    "map": data["img"],
+                    "disp": data["depth"],
+                    "edge": data["edge"],
                     "xyz": [mesh.position.x, mesh.position.y, mesh.position.z],
                     "rotation": mesh.rotation.y,
                     "rotation_xyz": [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
                     "aspect_ratio": thisAspectRatio,
+                    "objectType":objectType,
                 }
 
                 //save object to dataset
@@ -2140,13 +2153,25 @@
             for (var object of data.objects) {
                 let position = new THREE.Vector3(object.xyz[0], object.xyz[1], object.xyz[2])
                 let rotation = object.rotation
-                let d = [object.name, object.map, object.disp, object.edge]
+                let d = {
+                    "name":object.name, 
+                    "img":object.map, 
+                    "depth":object.disp, 
+                    "edge":object.edge,
+                    "bg":object.bg,
+                    "objectType":object.objecType,
+                }
+
+                console.log("about to die",d)
+
                 let thisAspectRatio = object.aspect_ratio
                 let key = object.key
                 console.log("adding object", d, position, rotation, thisAspectRatio, key)
 
 
-                let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz)
+
+
+                let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz,objectType)
                 if ("scale" in object) {
                     mesh.scale.set(object.scale[0], object.scale[1], object.scale[2])
                 }

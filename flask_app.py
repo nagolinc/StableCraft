@@ -35,9 +35,10 @@ import opensimplex
 #import asyncio
 import threading
 import time
+import yaml
 
 MIN_PROMPT_LENGTH = 12
-jobs_count=0
+jobs_count = 0
 
 
 def setup(
@@ -52,7 +53,8 @@ def setup(
     suffix="4k dslr",
     MAX_GEN_IMAGES=18,
     use_xformers=True,
-    negative_prompt="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body"
+    negative_prompt="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body",
+    defaultPrompts="prompts.yaml"
 ):
     global base_count
     # some constants that matter
@@ -68,6 +70,17 @@ def setup(
     huggingface_hub.commands.user.login(token=hf_token)
 
     db = dataset.connect('sqlite:///mydatabase.db')
+
+    OBJECT_TYPES = {
+        0: "Object",
+        1: "NPC",
+        2: "Building",
+        3: "Plant",
+        4: "Tree",
+        5: "Mob",
+        6: "Boss",
+        7: "Fish",
+    }
 
     # text generation pipeline
     #tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-2.7B")
@@ -150,17 +163,15 @@ def setup(
     model = DPTForDepthEstimation.from_pretrained(
         "Intel/dpt-large", cache_dir="./AI/StableDiffusion")
 
-    default_prompts = ["an owl bear",
-                       "a dwarf warrior with a huge ax",
-                       "gelatinous cube from dungeons and dragons",
-                       "an blonde elf warrior holding a bow",
-                       "an ancient stone with mysterious runes carved on it"
-                       ]
+    with open(defaultPrompts, 'r') as file:
+        default_prompts = yaml.safe_load(file)['prompts']
 
-    all_prompts = []
-    generated_prompts=[]
-    generated_images=[]
-    used_images=[]
+    print("gir",default_prompts)
+
+    all_prompts = {objectType:[] for objectType in OBJECT_TYPES.values()}
+    generated_prompts = {objectType:[] for objectType in OBJECT_TYPES.values()}
+    generated_images = {objectType:[] for objectType in OBJECT_TYPES.values()}
+    used_images = {objectType:[] for objectType in OBJECT_TYPES.values()}
 
     def doGen(prompt, seed, height=512, width=512):
         global base_count
@@ -222,13 +233,13 @@ def setup(
         img.save(imgPath)
         return img, imgName
 
-    def generatePrompt(lock,k=5, max_new_tokens=200):
+    def generatePrompt(lock, objectType, k=5, max_new_tokens=200):
         lock.acquire()
 
-        if len(all_prompts) >= k:
-            prompts = random.sample(all_prompts, k)
+        if len(all_prompts[objectType]) >= k:
+            prompts = random.sample(all_prompts[objectType], k)
         else:
-            prompts = random.sample(default_prompts+all_prompts, k)
+            prompts = random.sample(default_prompts[objectType]+all_prompts[objectType], k)
         print("chose prompts", prompts)
         # textInput="\n".join(prompts)+"\n"
         textInput = "\ndescription:\n".join([s.strip() for s in prompts])
@@ -238,8 +249,8 @@ def setup(
         rv = [s for s in output.split("\n") if len(
             s) > MIN_PROMPT_LENGTH and "description:" not in s]
 
-        #save these prompts
-        generated_prompts.append(rv)
+        # save these prompts
+        generated_prompts[objectType].append(rv)
 
         if len(rv) == 0:
             out = random.choice(prompts)
@@ -248,7 +259,7 @@ def setup(
         print("returning", out)
         lock.release()
         return out
-        #fut.set_result(out)
+        # fut.set_result(out)
 
     def process_image(image):
         # prepare image for the model
@@ -278,69 +289,65 @@ def setup(
         d = np.max([np.abs(a-r1), np.abs(a-r2),
                    np.abs(a-r3), np.abs(a-r4)], axis=0)
 
-        l=[d]
+        l = [d]
         for i in range(edgeWidth):
             r1 = np.roll(d, -i, axis=0)
             r2 = np.roll(d, i, axis=0)
             r3 = np.roll(d, -i, axis=1)
             r4 = np.roll(d, i, axis=1)
-            l+=[r1,r2,r3,r4]
-        d=np.max(l,0)
-        
+            l += [r1, r2, r3, r4]
+        d = np.max(l, 0)
 
-        
         # return d
         mask = d < thresh
         img = Image.fromarray(mask)
         return img
 
-
-    def getImageWithPrompt(lock, prompt,width,height,seed):
+    def getImageWithPrompt(lock, prompt, width, height, seed):
         lock.acquire()
-        print("PROMPT:",prompt)
-        
+        print("PROMPT:", prompt)
+
         h = hashlib.sha224(("%s --seed %d" % (prompt, seed)
                             ).encode('utf-8')).hexdigest()
         img, imgName = doGen(prompt, seed, height, width)
 
         depth_map = process_image(img)
 
-        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
+        edge_mask = removeEdges(depth_map, thresh=edgeThreshold)
         edgeName = "%s_e.png" % h
         edgePath = os.path.join(sample_path, edgeName)
         edge_mask.save(edgePath)
 
-        depth_map = depth_map.filter(ImageFilter.GaussianBlur(radius=blurRadius))
+        depth_map = depth_map.filter(
+            ImageFilter.GaussianBlur(radius=blurRadius))
 
         depthName = "%s_d.png" % h
         depthPath = os.path.join(sample_path, depthName)
         depth_map.save(depthPath)
 
-        edge_mask = removeEdges(depth_map,thresh=edgeThreshold)
+        edge_mask = removeEdges(depth_map, thresh=edgeThreshold)
         edgeName = "%s_e.png" % h
         edgePath = os.path.join(sample_path, edgeName)
         edge_mask.save(edgePath)
 
-        background=None #todo:fixme
+        background = None  # todo:fixme
 
-        result= {"name":prompt,
-            "img":imgName, 
-            "depth":depthName,
-            "edge":edgeName,
-            "bg":background
-        }
+        result = {"name": prompt,
+                  "img": imgName,
+                  "depth": depthName,
+                  "edge": edgeName,
+                  "bg": background
+                  }
+
         lock.release()
         return result
-        #fut.set_result(result)
+        # fut.set_result(result)
 
     # setup whisper
 
     whisper_model = whisper.load_model("small.en")
 
-
-
-
-    def transcribeAudio(lock,audio_input):
+    def transcribeAudio(lock, audio_input):
         lock.acquire()
         audio_input.save("tmp.webm")
 
@@ -352,99 +359,109 @@ def setup(
             print("err, no audio")
             prompt = ""
 
-        #fut.set_result(prompt)
+        # fut.set_result(prompt)
         lock.release()
         return prompt
 
-
-    def generateBackgroundObjects(lock,waitingAmount=3):
+    def generateBackgroundObjects(lock, waitingAmount=3):
         while True:
-            if lock.locked() or jobs_count>0 or len(generated_images)>=MAX_GEN_IMAGES:
+            if lock.locked() or jobs_count > 0:
                 time.sleep(waitingAmount)
             else:
-                print("generating object in background")
-                prompt = generatePrompt(lock)
-                aspect_ratio=random.choice(["square","portrait","landscape"])
-                ratioToSize={"square":(512,512),"portrait":(512,768),"landscape":(768,512)}
-                width,height=ratioToSize[aspect_ratio]
-                seed=-1
-                bgObject = getImageWithPrompt(lock,prompt,width,height,seed)
-                bgObject["aspectRatio"] = aspect_ratio
-                generated_images.append(bgObject)
-            
+                #find the object type with the least generated_images
+                objectType=None
+                objectCount=999
+                for thisObjectType in OBJECT_TYPES.values():
+                    thisObjectCount=len(generated_images[thisObjectType])
+                    if thisObjectCount<objectCount:
+                        objectCount=thisObjectCount
+                        objectType=thisObjectType
 
+                if thisObjectCount<MAX_GEN_IMAGES:
+                    print("generating object in background",objectType)
+                    prompt = generatePrompt(lock, objectType)
+                    #aspect_ratio = random.choice(
+                    #    ["square", "portrait", "landscape"])
 
-
-
+                    aspect_ratio="square"
+                    if objectType=="NPC":
+                        aspect_ratio="portrait"
+                    
+                    ratioToSize = {"square": (512, 512), "portrait": (
+                        512, 768), "landscape": (768, 512)}
+                    width, height = ratioToSize[aspect_ratio]
+                    seed = -1
+                    bgObject = getImageWithPrompt(
+                        lock, prompt, width, height, seed)
+                    # todo: fixme (neeed different objects for different types)
+                    bgObject["objectType"] = "Object"
+                    bgObject["aspectRatio"] = aspect_ratio
+                    generated_images[objectType].append(bgObject)
+                else:
+                    time.sleep(waitingAmount)
 
     # flask server
     app = Flask(__name__)
     run_with_ngrok(app, auth_token=os.environ["NGROK_TOKEN"])
 
-
-
     @app.route("/")
     def hello_world():
         return "<p>Hello, World!</p><br><a href='static/examples/whisper.html'>StableCraft</a>"
-
 
     #loop = asyncio.get_event_loop()
 
     lock = threading.Lock()
 
-    backgroundThread=threading.Thread(target=generateBackgroundObjects,args=[lock])
+    backgroundThread = threading.Thread(
+        target=generateBackgroundObjects, args=[lock])
     backgroundThread.start()
-
-
 
     @app.route("/putAudio", methods=['POST'])
     def putAudio():
         global jobs_count
         global base_count
-        jobs_count+=1
+        jobs_count += 1
 
         audio_input = request.files['audio_data']
         width = request.values.get("width", default=512, type=int)
         height = request.values.get("height", default=512, type=int)
+        objectType = request.values.get("objectType", default="object")
         seed = request.values.get("seed", default=-1, type=int)
         print("img properties", width, height, seed)
         # with open("tmp.webm",'wb') as f:
         # f.write(audio_input)
 
-        #transcribe audio
-        #fut=loop.create_future()
-        #loop.create_task(transcribeAudio(fut,audio_input))
-        #prompt=await fut
-        prompt=transcribeAudio(lock,audio_input)
+        # transcribe audio
+        # fut=loop.create_future()
+        # loop.create_task(transcribeAudio(fut,audio_input))
+        # prompt=await fut
+        prompt = transcribeAudio(lock, audio_input)
 
-        
         if len(prompt) < MIN_PROMPT_LENGTH or prompt.lower().startswith("thank"):
             print("skipping prompt", prompt)
             prompt = generatePrompt(lock)
-            #fut=loop.create_future()
-            #loop.create_task(generatePrompt(fut))
-            #prompt=await fut            
+            # fut=loop.create_future()
+            # loop.create_task(generatePrompt(fut))
+            # prompt=await fut
             print("generated prompt:", prompt)
         else:
-            all_prompts.append(prompt)
+            all_prompts[objectType].append(prompt)
 
         if seed == -1:
             seed = random.randint(0, 10**9)
 
-
-        #geneate image
-        result=getImageWithPrompt(lock,prompt,width,height,seed)
-        jobs_count-=1
+        # geneate image
+        result = getImageWithPrompt(lock, prompt, width, height, seed)
+        result["objectType"] = objectType
+        jobs_count -= 1
 
         return jsonify(result)
-
-        
 
     @app.route("/genPrompt", methods=['POST'])
     def genPrompt():
         global base_count
         global jobs_count
-        jobs_count +=1
+        jobs_count += 1
         prompt = request.values.get('prompt')
         width = request.values.get("width", default=512, type=int)
         height = request.values.get("height", default=512, type=int)
@@ -454,9 +471,9 @@ def setup(
         if seed == -1:
             seed = random.randint(0, 10**9)
 
-        #geneate image
-        result = getImageWithPrompt(lock,prompt,width,height,seed)
-        jobs_count -=1
+        # geneate image
+        result = getImageWithPrompt(lock, prompt, width, height, seed)
+        jobs_count -= 1
         return jsonify(result)
 
     @app.route("/genAudio", methods=['POST'])
@@ -482,13 +499,13 @@ def setup(
             "saveData": saveData,
         })
 
-    @app.route("/saveObject",methods=['POST'])
+    @app.route("/saveObject", methods=['POST'])
     def saveObject():
         _saveData = request.values['saveData']
-        saveData=json.loads(_saveData)
+        saveData = json.loads(_saveData)
         table = db['savedObjects']
-        #for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
-        found=table.find_one(
+        # for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
+        found = table.find_one(
             user=saveData["user"],
             world=saveData["world"],
             gridX=saveData["gridX"],
@@ -507,7 +524,7 @@ def setup(
                     objectNonce=saveData["nonce"],
                     data=_saveData
                 ),
-                ["user","world","gridx","gridZ","objectKey","objectNonce"]                
+                ["user", "world", "gridx", "gridZ", "objectKey", "objectNonce"]
             )
         else:
             table.insert(
@@ -519,18 +536,18 @@ def setup(
                     objectKey=saveData["key"],
                     objectNonce=saveData["nonce"],
                     data=_saveData
-                )           
+                )
             )
 
         return jsonify(saveData)
 
-    @app.route("/deleteObject",methods=['POST'])
+    @app.route("/deleteObject", methods=['POST'])
     def deleteObject():
         _saveData = request.values['saveData']
-        saveData=json.loads(_saveData)
+        saveData = json.loads(_saveData)
         table = db['savedObjects']
-        #for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
-        found=table.find_one(
+        # for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
+        found = table.find_one(
             user=saveData["user"],
             world=saveData["world"],
             gridX=saveData["gridX"],
@@ -547,20 +564,20 @@ def setup(
                 objectKey=saveData["key"],
                 objectNonce=saveData["nonce"],
             )
-            return jsonify({"msg":"object deleted","object":found})
+            return jsonify({"msg": "object deleted", "object": found})
         else:
-            return jsonify({"msg":"Object not found"})
+            return jsonify({"msg": "Object not found"})
 
-    @app.route("/loadObjects",methods=['POST'])
+    @app.route("/loadObjects", methods=['POST'])
     def loadObjects():
         user = request.values['user']
         world = request.values['world']
         gridX = request.values['gridX']
         gridZ = request.values['gridZ']
-        
+
         table = db['savedObjects']
-        #for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
-        found=table.find(
+        # for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
+        found = table.find(
             user=user,
             world=world,
             gridX=gridX,
@@ -568,44 +585,36 @@ def setup(
         )
 
         return jsonify(list(found))
-    
-
 
     @app.route("/getBackgroundObject")
     def getBackgroundObject():
-        if len(generated_images)>0:
-            result=generated_images.pop()
-            used_images.append(result)
+        objectType=random.choice(list(OBJECT_TYPES.values()))
+        if len(generated_images[objectType]) > 0:
+            result = generated_images[objectType].pop()
+            used_images[objectType].append(result)
         else:
-            result=random.choice(used_images)
+            result = random.choice(used_images[objectType])
         return jsonify(result)
 
-    @app.route("/noise2d",methods=['POST'])
+    @app.route("/noise2d", methods=['POST'])
     def noise2d():
-        x0 = request.values.get('x0',type=float)
-        x1 = request.values.get('x1',type=float)
-        y0 = request.values.get('y0',type=float)
-        y1 = request.values.get('y1',type=float)
-        k = request.values.get('k',type=int)
+        x0 = request.values.get('x0', type=float)
+        x1 = request.values.get('x1', type=float)
+        y0 = request.values.get('y0', type=float)
+        y1 = request.values.get('y1', type=float)
+        k = request.values.get('k', type=int)
 
+        fractalScale = 5
 
-        fractalScale=5
-
-        x=np.linspace(x0,x1,k)
-        y=np.linspace(y0,y1,k)
-        a1=opensimplex.noise2array(x, y)
-        a2=opensimplex.noise2array(x*fractalScale, y*fractalScale)
-        a=(a1+0.5*a2)/1.5
+        x = np.linspace(x0, x1, k)
+        y = np.linspace(y0, y1, k)
+        a1 = opensimplex.noise2array(x, y)
+        a2 = opensimplex.noise2array(x*fractalScale, y*fractalScale)
+        a = (a1+0.5*a2)/1.5
 
         return jsonify([list(row) for row in a])
 
     return app
-
-    
-
-
-
-
 
 
 if __name__ == '__main__':
@@ -622,8 +631,9 @@ if __name__ == '__main__':
     parser.add_argument('--edgeWidth', type=int, default=3)
     parser.add_argument('--blurRadius', type=float, default=4)
     parser.add_argument('--noXformers', action='store_false')
-    parser.add_argument('--maxGenImages',type=int, default=18)
-    parser.add_argument('--negativePrompt',default="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body")
+    parser.add_argument('--maxGenImages', type=int, default=18)
+    parser.add_argument('--negativePrompt', default="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body")
+    parser.add_argument('--defaultPrompts', default="prompts.yaml")
     args = parser.parse_args()
     print("args", args)
     app = setup(
@@ -638,6 +648,7 @@ if __name__ == '__main__':
         suffix=args.suffix,
         use_xformers=args.noXformers,
         MAX_GEN_IMAGES=args.maxGenImages,
-        negative_prompt=args.negativePrompt
+        negative_prompt=args.negativePrompt,
+        defaultPrompts=args.defaultPrompts
     )
     app.run()

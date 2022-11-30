@@ -1,0 +1,50 @@
+prompts:
+  Object:
+    - A statue of a cat
+    - An ancient urn
+    - A glowing sword
+    - A magic goblet
+    - A treasure chest
+  NPC:
+    - A fair elf maiden
+    - A husky dwarf with an axe
+    - A paladin in shining armor
+    - A rogue in a black cloak holding a dagger
+    - An angry orc merchant
+  Building:
+    - An ornate castle
+    - A cozy medieval inn
+    - An elaborate baroque cathedral
+    - A brick house
+    - A thatched hut
+  Plant:
+    - A rose bush
+    - A clump of grass
+    - A low tangly bush
+    - A patch of flowers
+    - A small green plant
+  Tree:
+    - A tall oak tree
+    - An ancient wizened tree with an owl resting in its branches
+    - A cherry tree covered in blossoms
+    - A pine tree
+    - A dying tree with only a few leaves left
+  Mob:
+    - A dire rat
+    - A wolf
+    - A gelatenous cube
+    - An owlbear
+    - A giant spider
+  Boss:
+    - A massive demon with fire coming out of its eyes
+    - A dragon
+    - An unspeakably evil horrifying monster beyond all comprehension
+    - An angry god holding a spear made out of lightning
+    - A giant minotaur
+  Fish:
+    - A goldfish
+    - A shark
+    - A mermaid
+    - A manatee
+    - A small perch
+
