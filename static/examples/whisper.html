@@ -81,7 +81,7 @@
         let allCaptions = []
         var loader = new FontLoader();
         let gridToMeshes = {}
-        let gridSize = 5
+        let gridSize = 8
         let bgGenRange = 1
         let bgGenRange_floor = 2
 
@@ -145,7 +145,7 @@
             7: "Fish",
         }
 
-        let CURRENT_OBJECT_TYPE = 0
+        let CURRENT_OBJECT_TYPE = 1
         let NUM_OBJECT_TYPES = 8
         let OBJECT_TYPE = OBJECT_TYPES[CURRENT_OBJECT_TYPE]//"Object"
 
@@ -790,12 +790,12 @@
 
                         } else {
                             if (data.handedness == "right" && data.buttons[4] == 0 && mode == "RECORDING") {
-                                
-                                let objectType=OBJECT_TYPE
 
-                                console.log("stop recording",objectType)
+                                let objectType = OBJECT_TYPE
 
-                                stopRecording(nextCubePosition, nextCubeRotation,objectType)
+                                console.log("stop recording", objectType)
+
+                                stopRecording(nextCubePosition, nextCubeRotation, objectType)
                                 mode = "NONE"
                             }
 
@@ -1149,6 +1149,14 @@
             let width = baseSize
             let height = baseSize
 
+            if(objectType=="NPC"){
+                thisAspectRatio="portrait"
+            }
+
+            if(["Mob","Boss","Tree","Plant","Fish","Building"].includes(objectType)){
+                thisAspectRatio="square"
+            }
+
             if (thisAspectRatio == "portrait") {
                 if (baseSize == 512) {
                     height = 768
@@ -1187,7 +1195,7 @@
             console.log(data)
 
             let key = "KEY" + Math.random() + "_" + Math.random()
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key,null, objectType)
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key, null, objectType)
             scene.remove(placeholder)
 
         }
@@ -1424,6 +1432,7 @@
             let nextCubePosition = objectToRecreate.position
             let nextCubeRotation = objectToRecreate.rotation.y
             let nextCubeRotation_xyz = [objectToRecreate.rotation.x, objectToRecreate.rotation.y, objectToRecreate.rotation.z]
+            let objectType=objectToRecreate.userData["objectType"]
 
 
 
@@ -1437,6 +1446,8 @@
             } else if (thisAspectRatio == "landscape") {
                 fd.set("width", 768)
             }
+
+            fd.set("objectType", objectType)
 
             //fetch url from /tts endpoint
             let response = await fetch("/genPrompt", {
@@ -1778,7 +1789,7 @@
 
         }
 
-        function stopRecording(nextCubePosition, nextCubeRotation,objectType) {
+        function stopRecording(nextCubePosition, nextCubeRotation, objectType) {
 
             if (!mediaRecorder) return
 
@@ -1897,7 +1908,7 @@
                         "depth": object.disp,
                         "edge": object.edge,
                         "bg": object.bg,
-                        "objectType":object.objectType
+                        "objectType": object.objectType
                     }
                     let thisAspectRatio = object.aspect_ratio
                     let key = object.key
@@ -1967,20 +1978,22 @@
             let ePath = "../samples/" + data["edge"]
             let edgeMap = textureLoader.load(ePath);
 
+
+            let bgPath = "../samples/" + data["bg"]
+            let bgMap = textureLoader.load(bgPath);
+
             let displacementBias = -0.5
             let displacementScale = 1.0
 
-            if (objectType == "Building") {
-                let displacementScale = 0.1
-            }
+
 
             let material;
             if (edgeMap) {
                 material = new THREE.MeshStandardMaterial({
                     map: colorMap,
                     displacementMap: displacementMap,
-                    displacementScale: 1.0,
-                    displacementBias: -0.5, // from original model
+                    displacementScale: displacementScale,
+                    displacementBias: displacementBias, // from original model
                     alphaMap: edgeMap,
                     transparent: true,
                     side: THREE.DoubleSide
@@ -1993,7 +2006,32 @@
                     displacementBias: displacementBias, // from original model
                     side: THREE.DoubleSide
                 });
+            }
 
+            if (objectType == "Building") {
+                let displacementScale = 0.1
+                let displacementBias = 0
+
+                material = new THREE.MeshStandardMaterial({
+                    map: colorMap,
+                    displacementMap: displacementMap,
+                    displacementScale: displacementScale,
+                    displacementBias: displacementBias, // from original model
+                    side: THREE.DoubleSide
+                });
+            }
+
+            //these should all basically be cutouts
+            if (["Object","NPC", "Boss", "Mob", "Fish", "Tree", "Plant"].includes(objectType)) {
+                material = new THREE.MeshStandardMaterial({
+                    map: colorMap,
+                    displacementMap: displacementMap,
+                    displacementScale: displacementScale,
+                    displacementBias: displacementBias, // from original model
+                    alphaMap: bgMap,
+                    transparent: true,
+                    side: THREE.DoubleSide
+                });
             }
 
             //back compatability
@@ -2014,12 +2052,21 @@
 
             //building
             if (objectType == "Building") {
-                geometry = new THREE.BoxGeometry(10, 10, 10, 100, 100, 100);
+                geometry = new THREE.BoxGeometry(5, 5, 5, 100, 100, 100);
+            }
+
+            if (objectType == "Tree") {
+                geometry = new THREE.PlaneGeometry(3, 3, 100, 100);
+            }
+
+
+            if (objectType == "Boss") {
+                geometry = new THREE.PlaneGeometry(3, 3, 100, 100);
             }
 
             let mesh = new THREE.Mesh(geometry, material);
 
-            console.log("adding mesh",mesh)
+            console.log("adding mesh", mesh)
 
             scene.add(mesh);
             //mesh.rotation.y = rotation - Math.PI / 2;
@@ -2035,7 +2082,7 @@
             mesh.userData["prompt"] = data["name"]
             mesh.userData["key"] = key
             mesh.userData["aspect_ratio"] = thisAspectRatio
-            mesh.userData["objectType"]=objectType
+            mesh.userData["objectType"] = objectType
 
             //store mesh in allMeshes
             allMeshes.push(mesh)
@@ -2064,11 +2111,12 @@
                     "map": data["img"],
                     "disp": data["depth"],
                     "edge": data["edge"],
+                    "bg":data["bg"],
                     "xyz": [mesh.position.x, mesh.position.y, mesh.position.z],
                     "rotation": mesh.rotation.y,
                     "rotation_xyz": [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
                     "aspect_ratio": thisAspectRatio,
-                    "objectType":objectType,
+                    "objectType": objectType,
                 }
 
                 //save object to dataset
@@ -2154,15 +2202,15 @@
                 let position = new THREE.Vector3(object.xyz[0], object.xyz[1], object.xyz[2])
                 let rotation = object.rotation
                 let d = {
-                    "name":object.name, 
-                    "img":object.map, 
-                    "depth":object.disp, 
-                    "edge":object.edge,
-                    "bg":object.bg,
-                    "objectType":object.objecType,
+                    "name": object.name,
+                    "img": object.map,
+                    "depth": object.disp,
+                    "edge": object.edge,
+                    "bg": object.bg,
+                    "objectType": object.objecType,
                 }
 
-                console.log("about to die",d)
+                console.log("about to die", d)
 
                 let thisAspectRatio = object.aspect_ratio
                 let key = object.key
@@ -2171,7 +2219,7 @@
 
 
 
-                let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz,objectType)
+                let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz, objectType)
                 if ("scale" in object) {
                     mesh.scale.set(object.scale[0], object.scale[1], object.scale[2])
                 }
@@ -2262,7 +2310,7 @@
 
 
             if (parentMesh.userData["caption"]) {
-                scene.remove(parentMesh.userData["caption"])
+                parentMesh.remove(parentMesh.userData["caption"])
                 parentMesh.userData["caption"] = null
                 return
             }
@@ -2305,11 +2353,17 @@
                 // make shape ( N.B. edge view not visible )
 
                 const text = new THREE.Mesh(geometry, matLite);
-                scene.add(text);
+                parentMesh.add(text);
 
-                text.position.copy(parentMesh.position)
+                //get size
+                const box = new THREE.Box3();
+                parentMesh.geometry.computeBoundingBox();
+                box.copy( parentMesh.geometry.boundingBox ).applyMatrix4( parentMesh.matrixWorld );
+
+                //text.position.copy(parentMesh.position)
                 text.position.y += 1
-                text.rotation.copy(parentMesh.rotation)
+                text.position.z = box.max.z - parentMesh.position.z
+                //text.rotation.copy(parentMesh.rotation)
                 text.scale.set(scale, scale, scale)
 
                 //add to parent user data

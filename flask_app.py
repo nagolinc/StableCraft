@@ -24,13 +24,14 @@ from flask import Flask, jsonify, request
 from flask_ngrok2 import run_with_ngrok
 import huggingface_hub.commands.user
 from huggingface_hub.hf_api import HfApi, HfFolder
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageChops
 from torch import autocast
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           DPTFeatureExtractor, DPTForDepthEstimation, pipeline)
 
 from mubert import generate_track_by_prompt
 import opensimplex
+#from rembg import remove_background
 
 #import asyncio
 import threading
@@ -48,6 +49,7 @@ def setup(
     doImg2Img=True,
     img2imgSize=1024,
     edgeThreshold=2,
+    bg_threshold=128,
     edgeWidth=3,
     blurRadius=4,
     suffix="4k dslr",
@@ -57,6 +59,7 @@ def setup(
     defaultPrompts="prompts.yaml"
 ):
     global base_count
+    global latest_object
     # some constants that matter
     sample_path = "./static/samples"
     os.makedirs(sample_path, exist_ok=True)
@@ -166,12 +169,14 @@ def setup(
     with open(defaultPrompts, 'r') as file:
         default_prompts = yaml.safe_load(file)['prompts']
 
-    print("gir",default_prompts)
+    #print("gir", default_prompts)
 
-    all_prompts = {objectType:[] for objectType in OBJECT_TYPES.values()}
-    generated_prompts = {objectType:[] for objectType in OBJECT_TYPES.values()}
-    generated_images = {objectType:[] for objectType in OBJECT_TYPES.values()}
-    used_images = {objectType:[] for objectType in OBJECT_TYPES.values()}
+    all_prompts = {objectType: [] for objectType in OBJECT_TYPES.values()}
+    generated_prompts = {objectType: []
+                         for objectType in OBJECT_TYPES.values()}
+    generated_images = {objectType: [] for objectType in OBJECT_TYPES.values()}
+    used_images = {objectType: [] for objectType in OBJECT_TYPES.values()}
+    latest_object = None
 
     def doGen(prompt, seed, height=512, width=512):
         global base_count
@@ -239,7 +244,8 @@ def setup(
         if len(all_prompts[objectType]) >= k:
             prompts = random.sample(all_prompts[objectType], k)
         else:
-            prompts = random.sample(default_prompts[objectType]+all_prompts[objectType], k)
+            prompts = random.sample(
+                default_prompts[objectType]+all_prompts[objectType], k)
         print("chose prompts", prompts)
         # textInput="\n".join(prompts)+"\n"
         textInput = "\ndescription:\n".join([s.strip() for s in prompts])
@@ -303,6 +309,12 @@ def setup(
         img = Image.fromarray(mask)
         return img
 
+    def threshold(img, thresh=128):
+        a = np.array(img).astype(np.float64)
+        mask = a > thresh
+        img = Image.fromarray(mask)
+        return img
+
     def getImageWithPrompt(lock, prompt, width, height, seed):
         lock.acquire()
         print("PROMPT:", prompt)
@@ -330,13 +342,19 @@ def setup(
         edgePath = os.path.join(sample_path, edgeName)
         edge_mask.save(edgePath)
 
-        background = None  # todo:fixme
+        #background = None  # todo:fixme
+        bgName = "%s_bg.png" % h
+        bgPath = os.path.join(sample_path, bgName)
+        background = threshold(depth_map,thresh=bg_threshold)
+        background = ImageChops.multiply(background, edge_mask)
+        #background=remove_background(img) #just not reliable enough!
+        background.save(bgPath)
 
         result = {"name": prompt,
                   "img": imgName,
                   "depth": depthName,
                   "edge": edgeName,
-                  "bg": background
+                  "bg": bgName,
                   }
 
         lock.release()
@@ -364,29 +382,30 @@ def setup(
         return prompt
 
     def generateBackgroundObjects(lock, waitingAmount=3):
+        global latest_object
         while True:
             if lock.locked() or jobs_count > 0:
                 time.sleep(waitingAmount)
             else:
-                #find the object type with the least generated_images
-                objectType=None
-                objectCount=999
+                # find the object type with the least generated_images
+                objectType = None
+                objectCount = 999
                 for thisObjectType in OBJECT_TYPES.values():
-                    thisObjectCount=len(generated_images[thisObjectType])
-                    if thisObjectCount<objectCount:
-                        objectCount=thisObjectCount
-                        objectType=thisObjectType
+                    thisObjectCount = len(generated_images[thisObjectType])
+                    if thisObjectCount < objectCount:
+                        objectCount = thisObjectCount
+                        objectType = thisObjectType
 
-                if thisObjectCount<MAX_GEN_IMAGES:
-                    print("generating object in background",objectType)
+                if thisObjectCount < MAX_GEN_IMAGES:
+                    print("generating object in background", objectType)
                     prompt = generatePrompt(lock, objectType)
-                    #aspect_ratio = random.choice(
+                    # aspect_ratio = random.choice(
                     #    ["square", "portrait", "landscape"])
 
-                    aspect_ratio="square"
-                    if objectType=="NPC":
-                        aspect_ratio="portrait"
-                    
+                    aspect_ratio = "square"
+                    if objectType == "NPC":
+                        aspect_ratio = "portrait"
+
                     ratioToSize = {"square": (512, 512), "portrait": (
                         512, 768), "landscape": (768, 512)}
                     width, height = ratioToSize[aspect_ratio]
@@ -394,9 +413,10 @@ def setup(
                     bgObject = getImageWithPrompt(
                         lock, prompt, width, height, seed)
                     # todo: fixme (neeed different objects for different types)
-                    bgObject["objectType"] = "Object"
+                    bgObject["objectType"] = objectType
                     bgObject["aspectRatio"] = aspect_ratio
                     generated_images[objectType].append(bgObject)
+                    latest_object = bgObject
                 else:
                     time.sleep(waitingAmount)
 
@@ -435,11 +455,15 @@ def setup(
         # fut=loop.create_future()
         # loop.create_task(transcribeAudio(fut,audio_input))
         # prompt=await fut
-        prompt = transcribeAudio(lock, audio_input)
+        try:
+            prompt = transcribeAudio(lock, audio_input)
+        except:
+            prompt=generatePrompt(lock,objectType)
+
 
         if len(prompt) < MIN_PROMPT_LENGTH or prompt.lower().startswith("thank"):
             print("skipping prompt", prompt)
-            prompt = generatePrompt(lock)
+            prompt = generatePrompt(lock,objectType)
             # fut=loop.create_future()
             # loop.create_task(generatePrompt(fut))
             # prompt=await fut
@@ -466,6 +490,7 @@ def setup(
         width = request.values.get("width", default=512, type=int)
         height = request.values.get("height", default=512, type=int)
         seed = request.values.get("seed", default=-1, type=int)
+        objectType = request.values.get("objectType", default="Object", type=str)
         print("img properties", width, height, seed)
 
         if seed == -1:
@@ -473,6 +498,7 @@ def setup(
 
         # geneate image
         result = getImageWithPrompt(lock, prompt, width, height, seed)
+        result["objectType"]=objectType
         jobs_count -= 1
         return jsonify(result)
 
@@ -588,12 +614,14 @@ def setup(
 
     @app.route("/getBackgroundObject")
     def getBackgroundObject():
-        objectType=random.choice(list(OBJECT_TYPES.values()))
+        objectType = random.choice(list(OBJECT_TYPES.values()))
         if len(generated_images[objectType]) > 0:
             result = generated_images[objectType].pop()
             used_images[objectType].append(result)
-        else:
+        elif len(used_images[objectType]) > 0:
             result = random.choice(used_images[objectType])
+        else:
+            result = latest_object
         return jsonify(result)
 
     @app.route("/noise2d", methods=['POST'])
@@ -634,6 +662,7 @@ if __name__ == '__main__':
     parser.add_argument('--maxGenImages', type=int, default=18)
     parser.add_argument('--negativePrompt', default="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body")
     parser.add_argument('--defaultPrompts', default="prompts.yaml")
+    parser.add_argument('--bgThreshold', type=float, default=64)
     args = parser.parse_args()
     print("args", args)
     app = setup(
@@ -642,6 +671,7 @@ if __name__ == '__main__':
         doImg2Img=args.do_img2img,
         num_inference_steps=args.num_inference_steps,
         edgeThreshold=args.edgeThreshold,
+        bg_threshold=args.bgThreshold,
         edgeWidth=args.edgeWidth,
         img2imgSize=args.img2img_size,
         blurRadius=args.blurRadius,
