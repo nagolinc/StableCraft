@@ -2093,9 +2093,27 @@
             console.log("adding mesh", mesh)
 
             scene.add(mesh);
+
+            //get size and use to update position
+            const box = new THREE.Box3();
+            mesh.geometry.computeBoundingBox();
+            box.copy( mesh.geometry.boundingBox ).applyMatrix4( mesh.matrixWorld );
+            let meshSize= new THREE.Vector3()
+            box.getSize(meshSize)
+
+            let yOffset=meshSize.y/2
+            let xOffset=Math.sin(rotation)*mesh.size.z/2
+            let zOffset=Math.cos(rotation)*mesh.size.z/2
+
+
+
             //mesh.rotation.y = rotation - Math.PI / 2;
             mesh.rotation.y = rotation;
             mesh.position.copy(position);
+            mesh.position.x+=xOffset
+            mesh.position.y+=yOffset
+            mesh.position.z+=zOffset
+
             if (rotation_xyz) {
                 mesh.rotation.x = rotation_xyz[0];
                 mesh.rotation.y = rotation_xyz[1];
