@@ -56,7 +56,9 @@ def setup(
     MAX_GEN_IMAGES=18,
     use_xformers=True,
     negative_prompt="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body",
-    defaultPrompts="prompts.yaml"
+    defaultPrompts="prompts.yaml",
+    seaLevel=0.5,
+    fractalScale=5
 ):
     global base_count
     global latest_object
@@ -241,11 +243,30 @@ def setup(
     def generatePrompt(lock, objectType, k=5, max_new_tokens=200):
         lock.acquire()
 
-        if len(all_prompts[objectType]) >= k:
-            prompts = random.sample(all_prompts[objectType], k)
+        #table = db['savedObjects']
+        if 'savedObjects' in db.tables:
+            statement = """
+            SELECT * FROM savedObjects
+            WHERE objectType='{objectType}' AND userCreated=TRUE
+            ORDER BY RANDOM()
+            LIMIT 5;        
+            """.format(objectType=objectType)
+            gotPrompts = [x['name'] for x in db.query(statement)]
         else:
-            prompts = random.sample(
-                default_prompts[objectType]+all_prompts[objectType], k)
+            gotPrompts = []
+        print("got prompts", gotPrompts)
+
+        # if len(all_prompts[objectType]) >= k:
+        #    prompts = random.sample(all_prompts[objectType], k)
+        # else:
+        #    prompts = random.sample(
+        #        default_prompts[objectType]+all_prompts[objectType], k)
+
+        if len(gotPrompts) >= k:
+            prompts = gotPrompts
+        else:
+            prompts = default_prompts[objectType]+gotPrompts
+
         print("chose prompts", prompts)
         # textInput="\n".join(prompts)+"\n"
         textInput = "\ndescription:\n".join([s.strip() for s in prompts])
@@ -342,12 +363,12 @@ def setup(
         edgePath = os.path.join(sample_path, edgeName)
         edge_mask.save(edgePath)
 
-        #background = None  # todo:fixme
+        # background = None  # todo:fixme
         bgName = "%s_bg.png" % h
         bgPath = os.path.join(sample_path, bgName)
-        background = threshold(depth_map,thresh=bg_threshold)
+        background = threshold(depth_map, thresh=bg_threshold)
         background = ImageChops.multiply(background, edge_mask)
-        #background=remove_background(img) #just not reliable enough!
+        # background=remove_background(img) #just not reliable enough!
         background.save(bgPath)
 
         result = {"name": prompt,
@@ -383,6 +404,8 @@ def setup(
 
     def generateBackgroundObjects(lock, waitingAmount=3):
         global latest_object
+        table = db['savedObjects']
+
         while True:
             if lock.locked() or jobs_count > 0:
                 time.sleep(waitingAmount)
@@ -391,7 +414,9 @@ def setup(
                 objectType = None
                 objectCount = 999
                 for thisObjectType in OBJECT_TYPES.values():
-                    thisObjectCount = len(generated_images[thisObjectType])
+                    #thisObjectCount = len(generated_images[thisObjectType])
+                    thisObjectCount = table.count(
+                        objectType=thisObjectType, used=False)
                     if thisObjectCount < objectCount:
                         objectCount = thisObjectCount
                         objectType = thisObjectType
@@ -415,7 +440,76 @@ def setup(
                     # todo: fixme (neeed different objects for different types)
                     bgObject["objectType"] = objectType
                     bgObject["aspectRatio"] = aspect_ratio
-                    generated_images[objectType].append(bgObject)
+                    # generated_images[objectType].append(bgObject)
+
+                    '''
+                        let thisObject = {
+                        "gridX": gridX,
+                        "gridZ": gridZ,
+                        "user": USER,
+                        "world": WORLD,
+                        "key": key,
+                        "nonce": 0,
+                        "name": data["name"],
+                        "map": data["img"],
+                        "disp": data["depth"],
+                        "edge": data["edge"],
+                        "bg": data["bg"],
+                        "xyz": [mesh.position.x, mesh.position.y, mesh.position.z],
+                        "rotation": mesh.rotation.y,
+                        "rotation_xyz": [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
+                        "aspect_ratio": thisAspectRatio,
+                        "objectType": objectType,
+                        "userCreated": userCreated,
+                    }                    
+                    '''
+
+                    magicNumber = 123456789
+                    WORLD = "world0"
+                    USER = "user0"
+                    key = "KEY" + str(random.random()) + \
+                        "_" + str(random.random())
+
+                    saveData = {
+                        "gridX": magicNumber,
+                        "gridZ": magicNumber,
+                        "user": USER,
+                        "world": WORLD,
+                        "key": key,
+                        "nonce": 0,
+                        "name": bgObject["name"],
+                        "map": bgObject["img"],
+                        "disp": bgObject["depth"],
+                        "edge": bgObject["edge"],
+                        "bg": bgObject["bg"],
+                        "xyz": [magicNumber, magicNumber, magicNumber],
+                        "rotation": 0,
+                        "rotation_xyz": [0, 0, 0],
+                        "aspect_ratio": bgObject["aspectRatio"],
+                        "objectType": objectType,
+                        "userCreated": False,
+                    }
+
+                    _saveData = json.dumps(saveData)
+
+                    table = db['savedObjects']
+
+                    table.insert(
+                        dict(
+                            user=saveData["user"],
+                            world=saveData["world"],
+                            gridX=saveData["gridX"],
+                            gridZ=saveData["gridZ"],
+                            objectKey=saveData["key"],
+                            objectNonce=saveData["nonce"],
+                            data=_saveData,
+                            objectType=saveData["objectType"],
+                            name=saveData["name"],
+                            userCreated=saveData["userCreated"],
+                            used=False,
+                        )
+                    )
+
                     latest_object = bgObject
                 else:
                     time.sleep(waitingAmount)
@@ -426,7 +520,22 @@ def setup(
 
     @app.route("/")
     def hello_world():
-        return "<p>Hello, World!</p><br><a href='static/examples/whisper.html'>StableCraft</a>"
+        return '''
+
+<script>
+window.onload=function(){
+    var currentLocation = window.location;
+    var host = currentLocation.host
+    var quest=document.getElementById("questButton")
+    let href="https://www.oculus.com/open_url/?url=https://"+host+"/static/examples/whisper.html"
+    quest.onclick=()=>location.href=href
+}
+
+</script>
+<p>Hello, World!</p><br><a href='static/examples/whisper.html'>StableCraft</a><br>
+<button id=questButton>Open on quest</button>
+
+        '''
 
     #loop = asyncio.get_event_loop()
 
@@ -458,12 +567,11 @@ def setup(
         try:
             prompt = transcribeAudio(lock, audio_input)
         except:
-            prompt=generatePrompt(lock,objectType)
-
+            prompt = generatePrompt(lock, objectType)
 
         if len(prompt) < MIN_PROMPT_LENGTH or prompt.lower().startswith("thank"):
             print("skipping prompt", prompt)
-            prompt = generatePrompt(lock,objectType)
+            prompt = generatePrompt(lock, objectType)
             # fut=loop.create_future()
             # loop.create_task(generatePrompt(fut))
             # prompt=await fut
@@ -490,7 +598,8 @@ def setup(
         width = request.values.get("width", default=512, type=int)
         height = request.values.get("height", default=512, type=int)
         seed = request.values.get("seed", default=-1, type=int)
-        objectType = request.values.get("objectType", default="Object", type=str)
+        objectType = request.values.get(
+            "objectType", default="Object", type=str)
         print("img properties", width, height, seed)
 
         if seed == -1:
@@ -498,7 +607,7 @@ def setup(
 
         # geneate image
         result = getImageWithPrompt(lock, prompt, width, height, seed)
-        result["objectType"]=objectType
+        result["objectType"] = objectType
         jobs_count -= 1
         return jsonify(result)
 
@@ -548,7 +657,11 @@ def setup(
                     gridZ=saveData["gridZ"],
                     objectKey=saveData["key"],
                     objectNonce=saveData["nonce"],
-                    data=_saveData
+                    data=_saveData,
+                    objectType=saveData["objectType"],
+                    name=saveData["name"],
+                    userCreated=saveData["userCreated"],
+                    used=True,
                 ),
                 ["user", "world", "gridx", "gridZ", "objectKey", "objectNonce"]
             )
@@ -561,7 +674,11 @@ def setup(
                     gridZ=saveData["gridZ"],
                     objectKey=saveData["key"],
                     objectNonce=saveData["nonce"],
-                    data=_saveData
+                    data=_saveData,
+                    objectType=saveData["objectType"],
+                    name=saveData["name"],
+                    userCreated=saveData["userCreated"],
+                    used=True,
                 )
             )
 
@@ -612,9 +729,32 @@ def setup(
 
         return jsonify(list(found))
 
-    @app.route("/getBackgroundObject")
+    @app.route("/getBackgroundObject", methods=['POST'])
     def getBackgroundObject():
-        objectType = random.choice(list(OBJECT_TYPES.values()))
+        x = request.values.get('x', type=float)
+        y = request.values.get('y', type=float)
+
+        h = heightAtCoord(x, y)
+        h01 = (h + 1) / 2#convert from -1,1 to 0,1
+
+        print("\n\nwha",x,y,"->",h,"\n\n")
+
+        if h01 < seaLevel:
+            objectType = "Fish"
+        else:
+            objectType = random.choice(list({
+                0: "Object",
+                1: "NPC",
+                2: "Building",
+                3: "Plant",
+                4: "Tree",
+                5: "Mob",
+                6: "Boss",
+            }.values())
+            )
+
+        '''
+        
         if len(generated_images[objectType]) > 0:
             result = generated_images[objectType].pop()
             used_images[objectType].append(result)
@@ -622,6 +762,71 @@ def setup(
             result = random.choice(used_images[objectType])
         else:
             result = latest_object
+
+        '''
+        table = db['savedObjects']
+        # foundObject=table.find_one(objectType=objectType,used=False,order_by="RANDOM()")
+        statement = """
+        SELECT DISTINCT (name) FROM savedObjects
+        WHERE objectType='{objectType}' AND used=FALSE
+        ORDER BY RANDOM()        
+        LIMIT 1;        
+        """.format(objectType=objectType)
+        _found = list(db.query(statement))
+        if len(_found) > 0:
+            foundObject = table.find_one(
+                name=_found[0]['name'],
+                objectType=objectType,
+                used=False
+            )
+            foundObject["used"] = True
+            table.update(
+                foundObject,
+                ["user", "world", "gridx", "gridZ", "objectKey", "objectNonce"]
+            )
+            print("\n\nfound object here", foundObject, "\n\n")
+        else:
+            statement = """
+            SELECT DISTINCT (name) FROM savedObjects
+            WHERE objectType='{objectType}'
+            ORDER BY RANDOM()
+            LIMIT 1;        
+            """.format(objectType=objectType)
+            _found = list(db.query(statement))
+            if len(_found) > 0:
+                foundObject = table.find_one(
+                    name=_found[0]['name'],
+                    objectType=objectType,
+                )
+                print("\n\nfound object here2", foundObject, "\n\n")
+            else:
+                statement = """
+                SELECT DISTINCT (name) FROM savedObjects
+                ORDER BY RANDOM()
+                LIMIT 1;        
+                """.format(objectType=objectType)
+                _found = list(db.query(statement))
+                if len(_found) > 0:
+                    foundObject = table.find_one(name=_found[0]['name'])
+                    print("\n\nfound object here3", foundObject, "\n\n")
+                else:
+                    print("This should never happen! No background objects found")
+                    return
+
+        saveData = json.loads(foundObject["data"])
+
+        result = {
+            "name": saveData["name"],
+            # this is obnoxious, should just change map to img everyhwere
+            "img": saveData["map"],
+            # this is obnoxious, should just change disp to depth everyhwere
+            "depth": saveData["disp"],
+            "edge": saveData["edge"],
+            "bg": saveData["bg"],
+            "objectType": saveData["objectType"],
+            "aspectRatio": saveData["aspect_ratio"],
+        }
+
         return jsonify(result)
 
     @app.route("/noise2d", methods=['POST'])
@@ -632,8 +837,6 @@ def setup(
         y1 = request.values.get('y1', type=float)
         k = request.values.get('k', type=int)
 
-        fractalScale = 5
-
         x = np.linspace(x0, x1, k)
         y = np.linspace(y0, y1, k)
         a1 = opensimplex.noise2array(x, y)
@@ -641,6 +844,14 @@ def setup(
         a = (a1+0.5*a2)/1.5
 
         return jsonify([list(row) for row in a])
+
+    def heightAtCoord(_x, _y):
+        x = np.array([_x])
+        y = np.array([_y])
+        a1 = opensimplex.noise2array(x, y)
+        a2 = opensimplex.noise2array(x*fractalScale, y*fractalScale)
+        a = (a1+0.5*a2)/1.5
+        return a[0][0]
 
     return app
 

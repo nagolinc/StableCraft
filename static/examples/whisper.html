@@ -81,6 +81,7 @@
         let allCaptions = []
         var loader = new FontLoader();
         let gridToMeshes = {}
+        let gridLoaded = {}
         let gridSize = 8
         let bgGenRange = 1
         let bgGenRange_floor = 2
@@ -91,7 +92,7 @@
         let terrainScale = 0.1
         let terrainScaleY = 5
         let playerHeight = 1.5
-        let seaLevel = 0.3
+        let seaLevel = 0.5
         const textureLoader = new THREE.TextureLoader();
         const floorNormals = textureLoader.load("./noise.png");
 
@@ -1149,12 +1150,12 @@
             let width = baseSize
             let height = baseSize
 
-            if(objectType=="NPC"){
-                thisAspectRatio="portrait"
+            if (objectType == "NPC") {
+                thisAspectRatio = "portrait"
             }
 
-            if(["Mob","Boss","Tree","Plant","Fish","Building"].includes(objectType)){
-                thisAspectRatio="square"
+            if (["Mob", "Boss", "Tree", "Plant", "Fish", "Building"].includes(objectType)) {
+                thisAspectRatio = "square"
             }
 
             if (thisAspectRatio == "portrait") {
@@ -1195,7 +1196,8 @@
             console.log(data)
 
             let key = "KEY" + Math.random() + "_" + Math.random()
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key, null, objectType)
+            let userCreated = true
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, key, null, objectType, userCreated)
             scene.remove(placeholder)
 
         }
@@ -1404,8 +1406,19 @@
                         let nextCubePosition = new THREE.Vector3(x, y, z)
                         let nextCubeRotation = Math.random() * 2 * Math.PI
                         let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
+
+
+                        let fd = new FormData();
+                        fd.set("x", x / gridSize * terrainScale)
+                        fd.set("y", z / gridSize * terrainScale)//gah!  noise uses units of x,y but threejs uses coordinates of x,z (y is up)
+                        fd.set("world", WORLD)
+                        fd.set("user", USER)
+
                         //fetch url from /tts endpoint
-                        let response = await fetch("/getBackgroundObject")
+                        let response = await fetch("/getBackgroundObject", {
+                            body: fd,
+                            method: "POST"
+                        })
                         let data = await response.json()
 
                         console.log(data)
@@ -1414,7 +1427,8 @@
                         let objectType = data["objectType"]
 
                         let key = "KEY" + Math.random() + "_" + Math.random()
-                        add3dImage(data, nextCubePosition, nextCubeRotation, true, aspectRatio, key, null, objectType)
+                        let userCreated = false
+                        add3dImage(data, nextCubePosition, nextCubeRotation, true, aspectRatio, key, null, objectType, userCreated)
                         scene.remove(placeholder)
                     }
 
@@ -1432,7 +1446,7 @@
             let nextCubePosition = objectToRecreate.position
             let nextCubeRotation = objectToRecreate.rotation.y
             let nextCubeRotation_xyz = [objectToRecreate.rotation.x, objectToRecreate.rotation.y, objectToRecreate.rotation.z]
-            let objectType=objectToRecreate.userData["objectType"]
+            let objectType = objectToRecreate.userData["objectType"]
 
 
 
@@ -1469,7 +1483,8 @@
 
 
             let newKey = "KEY" + Math.random() + "_" + Math.random()
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz, objectType)
+            let userCreated = true
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz, objectType, userCreated)
 
 
             console.log("removing object", objectToRecreate)
@@ -1600,7 +1615,9 @@
 
             let newKey = "KEY" + Math.random() + "_" + Math.random()
 
-            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz, objectType)
+            let userCreated = true
+
+            add3dImage(data, nextCubePosition, nextCubeRotation, true, thisAspectRatio, newKey, nextCubeRotation_xyz, objectType, userCreated)
 
 
 
@@ -1859,6 +1876,11 @@
 
             let gridKey = `${gridX}_${gridZ}`
 
+            //don't reload every time
+            if (gridLoaded[gridKey]) {
+                return
+            }
+
 
             let fd = new FormData();
             fd.append("user", USER);
@@ -1914,8 +1936,8 @@
                     let key = object.key
                     console.log("adding object", d, position, rotation, thisAspectRatio, key)
 
-
-                    let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz, object.objectType)
+                    let userCreated = object.userCreated
+                    let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz, object.objectType, userCreated)
                     if ("scale" in object) {
                         mesh.scale.set(object.scale[0], object.scale[1], object.scale[2])
                     }
@@ -1962,11 +1984,13 @@
                 }
             }
 
+            gridLoaded[gridKey] = true
+
 
         }
 
 
-        function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz, objectType) {
+        function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz, objectType, userCreated) {
             let imgPath = "../samples/" + data["img"]
             let dPath = "../samples/" + data["depth"]
 
@@ -2022,7 +2046,7 @@
             }
 
             //these should all basically be cutouts
-            if (["Object","NPC", "Boss", "Mob", "Fish", "Tree", "Plant"].includes(objectType)) {
+            if (["Object", "NPC", "Boss", "Mob", "Fish", "Tree", "Plant"].includes(objectType)) {
                 material = new THREE.MeshStandardMaterial({
                     map: colorMap,
                     displacementMap: displacementMap,
@@ -2111,12 +2135,13 @@
                     "map": data["img"],
                     "disp": data["depth"],
                     "edge": data["edge"],
-                    "bg":data["bg"],
+                    "bg": data["bg"],
                     "xyz": [mesh.position.x, mesh.position.y, mesh.position.z],
                     "rotation": mesh.rotation.y,
                     "rotation_xyz": [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
                     "aspect_ratio": thisAspectRatio,
                     "objectType": objectType,
+                    "userCreated": userCreated,
                 }
 
                 //save object to dataset
@@ -2217,9 +2242,10 @@
                 console.log("adding object", d, position, rotation, thisAspectRatio, key)
 
 
+                let userCreated = object.userCreated
 
 
-                let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz, objectType)
+                let mesh = add3dImage(d, position, rotation, false, thisAspectRatio, key, object.rotation_xyz, objectType, userCreated)
                 if ("scale" in object) {
                     mesh.scale.set(object.scale[0], object.scale[1], object.scale[2])
                 }
@@ -2358,7 +2384,7 @@
                 //get size
                 const box = new THREE.Box3();
                 parentMesh.geometry.computeBoundingBox();
-                box.copy( parentMesh.geometry.boundingBox ).applyMatrix4( parentMesh.matrixWorld );
+                box.copy(parentMesh.geometry.boundingBox).applyMatrix4(parentMesh.matrixWorld);
 
                 //text.position.copy(parentMesh.position)
                 text.position.y += 1
