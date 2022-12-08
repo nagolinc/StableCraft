@@ -1126,9 +1126,14 @@
             //use this to place object
             nextCubePosition = new THREE.Vector3().copy(position);
             //nextCubePosition.y = 1
-            nextCubePosition.y -= 0.5
+            //nextCubePosition.y -= 0.5
+
+
             nextCubePosition.x -= 2 * Math.sin(r)
             nextCubePosition.z -= 2 * Math.cos(r)
+
+            nextCubePosition.y = getFloorHeight(nextCubePosition.x,nextCubePosition.z)
+
             nextCubeRotation = r
 
             placeholderCube = addPlaceholder(nextCubePosition, nextCubeRotation, "#00ff00");
@@ -1401,7 +1406,8 @@
                         //something needs to go here
                         let x = (gridX + Math.random()) * gridSize
                         let z = (gridZ + Math.random()) * gridSize
-                        let y = getFloorHeight(x, z) + 0.5
+                        //let y = getFloorHeight(x, z) + 0.5
+                        let y = getFloorHeight(x, z)
 
                         let nextCubePosition = new THREE.Vector3(x, y, z)
                         let nextCubeRotation = Math.random() * 2 * Math.PI
@@ -1447,6 +1453,8 @@
             let nextCubeRotation = objectToRecreate.rotation.y
             let nextCubeRotation_xyz = [objectToRecreate.rotation.x, objectToRecreate.rotation.y, objectToRecreate.rotation.z]
             let objectType = objectToRecreate.userData["objectType"]
+
+            nextCubePosition.y -= objectToRecreate.userData["meshSize"].y/2
 
 
 
@@ -1569,7 +1577,9 @@
             euler.setFromQuaternion(objectToRecreate.quaternion, "YZX")
 
             //offset postion
-            let offsetAmt = 1
+            //let offsetAmt = 1
+            let offsetAmt=objectToRecreate.userData["meshSize"].x
+
             if (thisAspectRatio == "landscape") {
                 offsetAmt = 1.5
             }
@@ -1579,6 +1589,16 @@
 
             nextCubePosition.x += offsetX
             nextCubePosition.z += offsetZ
+
+            //move in local z
+            let offsetX2 = Math.sin(euler.y) * objectToRecreate.userData["meshSize"].z/2
+            let offsetZ2 = Math.cos(euler.y) * objectToRecreate.userData["meshSize"].z/2
+
+            nextCubePosition.x += offsetX2
+            nextCubePosition.z += offsetZ2
+
+
+            nextCubePosition.y -= objectToRecreate.userData["meshSize"].y/2
 
 
             let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
@@ -1855,7 +1875,7 @@
         async function updateWorld(position) {
             await generateFloorTiles(position)
             await loadGridObjects(position)
-            await generateBackgroundObjects(position)
+            //await generateBackgroundObjects(position)
         }
 
         async function loadGridObjects(position) {
@@ -2102,8 +2122,8 @@
             box.getSize(meshSize)
 
             let yOffset=meshSize.y/2
-            let xOffset=Math.sin(rotation)*mesh.size.z/2
-            let zOffset=Math.cos(rotation)*mesh.size.z/2
+            let xOffset= -Math.sin(rotation)*meshSize.z/2
+            let zOffset= -Math.cos(rotation)*meshSize.z/2
 
 
 
@@ -2125,6 +2145,8 @@
             mesh.userData["key"] = key
             mesh.userData["aspect_ratio"] = thisAspectRatio
             mesh.userData["objectType"] = objectType
+
+            mesh.userData["meshSize"] = meshSize
 
             //store mesh in allMeshes
             allMeshes.push(mesh)
@@ -2154,7 +2176,7 @@
                     "disp": data["depth"],
                     "edge": data["edge"],
                     "bg": data["bg"],
-                    "xyz": [mesh.position.x, mesh.position.y, mesh.position.z],
+                    "xyz": [mesh.position.x - xOffset, mesh.position.y -yOffset, mesh.position.z - zOffset],
                     "rotation": mesh.rotation.y,
                     "rotation_xyz": [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
                     "aspect_ratio": thisAspectRatio,

@@ -58,10 +58,14 @@ def setup(
     negative_prompt="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body",
     defaultPrompts="prompts.yaml",
     seaLevel=0.5,
-    fractalScale=5
+    fractalScale=5,
+    gridSize=8,
+    terrainScale=0.1,
+    terrainScaleY=5,
+    modelSize768=False
 ):
     global base_count
-    global latest_object
+    #global latest_object
     # some constants that matter
     sample_path = "./static/samples"
     os.makedirs(sample_path, exist_ok=True)
@@ -173,12 +177,14 @@ def setup(
 
     #print("gir", default_prompts)
 
+    '''
     all_prompts = {objectType: [] for objectType in OBJECT_TYPES.values()}
     generated_prompts = {objectType: []
                          for objectType in OBJECT_TYPES.values()}
     generated_images = {objectType: [] for objectType in OBJECT_TYPES.values()}
     used_images = {objectType: [] for objectType in OBJECT_TYPES.values()}
     latest_object = None
+    '''
 
     def doGen(prompt, seed, height=512, width=512):
         global base_count
@@ -215,10 +221,9 @@ def setup(
             with autocast("cuda"):
                 img2 = img2img(
                     prompt=prompt,
-                    init_image=img2Input,
+                    image=img2Input,
                     strength=0.25,
                     guidance_scale=7.5,
-                    width=1024, height=1024,
                     num_inference_steps=num_inference_steps,
                     generator=generator
                 ).images[0]
@@ -277,7 +282,7 @@ def setup(
             s) > MIN_PROMPT_LENGTH and "description:" not in s]
 
         # save these prompts
-        generated_prompts[objectType].append(rv)
+        # generated_prompts[objectType].append(rv)
 
         if len(rv) == 0:
             out = random.choice(prompts)
@@ -403,7 +408,7 @@ def setup(
         return prompt
 
     def generateBackgroundObjects(lock, waitingAmount=3):
-        global latest_object
+        #global latest_object
         table = db['savedObjects']
 
         while True:
@@ -431,8 +436,13 @@ def setup(
                     if objectType == "NPC":
                         aspect_ratio = "portrait"
 
-                    ratioToSize = {"square": (512, 512), "portrait": (
-                        512, 768), "landscape": (768, 512)}
+                    if modelSize768:
+                        ratioToSize = {"square": (768, 768), "portrait": (
+                            512, 768), "landscape": (768, 512)}
+                    else:
+                        ratioToSize = {"square": (512, 512), "portrait": (
+                            512, 768), "landscape": (768, 512)}
+
                     width, height = ratioToSize[aspect_ratio]
                     seed = -1
                     bgObject = getImageWithPrompt(
@@ -510,7 +520,7 @@ def setup(
                         )
                     )
 
-                    latest_object = bgObject
+                    #latest_object = bgObject
                 else:
                     time.sleep(waitingAmount)
 
@@ -577,7 +587,8 @@ window.onload=function(){
             # prompt=await fut
             print("generated prompt:", prompt)
         else:
-            all_prompts[objectType].append(prompt)
+            # all_prompts[objectType].append(prompt)
+            pass
 
         if seed == -1:
             seed = random.randint(0, 10**9)
@@ -715,29 +726,100 @@ window.onload=function(){
     def loadObjects():
         user = request.values['user']
         world = request.values['world']
-        gridX = request.values['gridX']
-        gridZ = request.values['gridZ']
+        gridX = int(request.values['gridX'])
+        gridZ = int(request.values['gridZ'])
 
         table = db['savedObjects']
         # for now our keys will be {world,gridX,gridZ,objectKey,objectNonce}
-        found = table.find(
+        found = list(table.find(
             user=user,
             world=world,
             gridX=gridX,
             gridZ=gridZ,
+        ))
+
+        # if nothing found, make something up
+        if len(found) == 0:
+            newObject = getBackgroundObjectFull(gridX, gridZ, user, world)
+            found += [newObject]
+
+        return jsonify(found)
+
+    def getBackgroundObjectFull(gridX, gridZ, USER, WORLD):
+        x = gridX+random.random()
+        z = gridZ+random.random()
+        bgObject = getBackgroundObject(x*terrainScale, z*terrainScale)
+
+        key = str(random.random())+"."+str(random.random())
+
+        # convert x,y,z to world coordinates
+        y = heightAtCoord(x*terrainScale, z*terrainScale)
+
+        xx = x*gridSize
+        yy = y*terrainScaleY
+        zz = z*gridSize
+
+        objectType = bgObject["objectType"]
+
+        # convert into format useful for saving
+        saveData = {
+            "gridX": gridX,
+            "gridZ": gridZ,
+            "user": USER,
+            "world": WORLD,
+            "key": key,
+            "nonce": 0,
+            "name": bgObject["name"],
+            "map": bgObject["img"],
+            "disp": bgObject["depth"],
+            "edge": bgObject["edge"],
+            "bg": bgObject["bg"],
+            "xyz": [xx, yy, zz],
+            "rotation": random.random()*6.28,
+            "rotation_xyz": [0, 0, 0],
+            "aspect_ratio": bgObject["aspectRatio"],
+            "objectType": objectType,
+            "userCreated": False,
+        }
+        #store in database
+        _saveData = json.dumps(saveData)
+
+        table = db['savedObjects']
+
+        result = dict(
+            user=saveData["user"],
+            world=saveData["world"],
+            gridX=saveData["gridX"],
+            gridZ=saveData["gridZ"],
+            objectKey=saveData["key"],
+            objectNonce=saveData["nonce"],
+            data=_saveData,
+            objectType=saveData["objectType"],
+            name=saveData["name"],
+            userCreated=saveData["userCreated"],
+            used=True,#gah!  This needs to be true so we don't keep re-using same object!
         )
 
-        return jsonify(list(found))
+        table.insert(
+            result
+        )
+
+        return result
 
     @app.route("/getBackgroundObject", methods=['POST'])
-    def getBackgroundObject():
+    def getBackgroundObjectRequest():
         x = request.values.get('x', type=float)
         y = request.values.get('y', type=float)
 
-        h = heightAtCoord(x, y)
-        h01 = (h + 1) / 2#convert from -1,1 to 0,1
+        result = getBackgroundObject(x, y)
+        return jsonify(result)
 
-        print("\n\nwha",x,y,"->",h,"\n\n")
+    def getBackgroundObject(x, y):
+
+        h = heightAtCoord(x, y)
+        h01 = (h + 1) / 2  # convert from -1,1 to 0,1
+
+        print("\n\nwha", x, y, "->", h, "\n\n")
 
         if h01 < seaLevel:
             objectType = "Fish"
@@ -827,7 +909,7 @@ window.onload=function(){
             "aspectRatio": saveData["aspect_ratio"],
         }
 
-        return jsonify(result)
+        return result
 
     @app.route("/noise2d", methods=['POST'])
     def noise2d():
@@ -874,6 +956,7 @@ if __name__ == '__main__':
     parser.add_argument('--negativePrompt', default="grayscale, collage, text, watermark, lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, normal quality, jpeg artifacts, watermark, blurry, grayscale, deformed weapons, deformed face, deformed human body")
     parser.add_argument('--defaultPrompts', default="prompts.yaml")
     parser.add_argument('--bgThreshold', type=float, default=64)
+    parser.add_argument('--modelSize768', action='store_true')
     args = parser.parse_args()
     print("args", args)
     app = setup(
@@ -890,6 +973,7 @@ if __name__ == '__main__':
         use_xformers=args.noXformers,
         MAX_GEN_IMAGES=args.maxGenImages,
         negative_prompt=args.negativePrompt,
-        defaultPrompts=args.defaultPrompts
+        defaultPrompts=args.defaultPrompts,
+        modelSize768=args.modelSize768
     )
     app.run()
