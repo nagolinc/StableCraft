@@ -761,6 +761,8 @@ window.onload=function(){
 
         objectType = bgObject["objectType"]
 
+        rotationY=random.random()*6.28
+
         # convert into format useful for saving
         saveData = {
             "gridX": gridX,
@@ -775,8 +777,8 @@ window.onload=function(){
             "edge": bgObject["edge"],
             "bg": bgObject["bg"],
             "xyz": [xx, yy, zz],
-            "rotation": random.random()*6.28,
-            "rotation_xyz": [0, 0, 0],
+            "rotation": rotationY,
+            "rotation_xyz": [0, rotationY, 0],
             "aspect_ratio": bgObject["aspectRatio"],
             "objectType": objectType,
             "userCreated": False,
@@ -814,26 +816,30 @@ window.onload=function(){
         result = getBackgroundObject(x, y)
         return jsonify(result)
 
-    def getBackgroundObject(x, y):
+    def getBackgroundObject(x, z):
 
-        h = heightAtCoord(x, y)
-        h01 = (h + 1) / 2  # convert from -1,1 to 0,1
+        y = heightAtCoord(x, z)
+        
 
-        print("\n\nwha", x, y, "->", h, "\n\n")
+        #print("\n\nwha", x, z, "->", y , "\n\n")
 
-        if h01 < seaLevel:
+        biomeType=getBiomeType(x,y,z)
+
+        if biomeType=="ocean":
             objectType = "Fish"
+        elif biomeType=="city":
+            objectType = random.choice([
+                "Object",
+                "NPC",
+                "Building",
+                ])
         else:
-            objectType = random.choice(list({
-                0: "Object",
-                1: "NPC",
-                2: "Building",
-                3: "Plant",
-                4: "Tree",
-                5: "Mob",
-                6: "Boss",
-            }.values())
-            )
+            objectType = random.choice([
+                "Plant",
+                "Tree",
+                "Mob",
+                "Boss",
+            ])
 
         '''
         
@@ -934,6 +940,32 @@ window.onload=function(){
         a2 = opensimplex.noise2array(x*fractalScale, y*fractalScale)
         a = (a1+0.5*a2)/1.5
         return a[0][0]
+
+    def getBiomeType(x,y,z):
+        h01 = (y + 1) / 2  # convert from -1,1 to 0,1
+        if h01 < seaLevel:
+            return "ocean"
+
+        cityScale=20
+        cityRadius=0.25
+        
+        xc=x/cityScale/terrainScale #want this in grid units, not terrain units
+        zc=z/cityScale/terrainScale #want this in grid units, not terrain units
+        xc0=round(xc)
+        zc0=round(zc)
+        d=((xc-xc0)**2+(zc-zc0)**2)**0.5
+
+        print("\n\n biome",xc,zc,xc0,zc0,d,"\n\n")
+
+        if d<cityRadius:
+            return "city"
+
+        return "forest"
+
+
+
+
+        
 
     return app
 

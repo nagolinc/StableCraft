@@ -120,10 +120,10 @@
             3: "recreate",
             4: "delete",
             5: "aspect ratio",
-            6: "object type",
-            7: "audio",
-            8: "resize",
-            9: "move",
+            6: "audio",
+            7: "resize",
+            8: "move",
+            9: "object type",
 
         }
         let ACTION_MODE_TO_INDEX = {}
@@ -150,8 +150,11 @@
         let NUM_OBJECT_TYPES = 8
         let OBJECT_TYPE = OBJECT_TYPES[CURRENT_OBJECT_TYPE]//"Object"
 
-        let near = 5
-        let far = 15
+        //let near = 5
+        //let far = 15
+
+        let near = 10
+        let far = 30
 
         init();
         animate();
