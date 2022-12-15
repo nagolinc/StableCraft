@@ -1135,7 +1135,7 @@
             nextCubePosition.x -= 2 * Math.sin(r)
             nextCubePosition.z -= 2 * Math.cos(r)
 
-            nextCubePosition.y = getFloorHeight(nextCubePosition.x,nextCubePosition.z)
+            nextCubePosition.y = getFloorHeight(nextCubePosition.x, nextCubePosition.z)
 
             nextCubeRotation = r
 
@@ -1201,6 +1201,7 @@
             })
             let data = await response.json()
 
+            
             console.log(data)
 
             let key = "KEY" + Math.random() + "_" + Math.random()
@@ -1362,12 +1363,97 @@
                         let tile = await getFloorTile(gridX, gridZ)
                         //console.log("added tile", gridX, gridZ, tile)
 
+                        tile.userData["xz"] = [gridX, gridZ]
+
                         floorTiles[gridKey] = tile
                         floorTiles_list.push(tile)
                     }
                 }
             }
         }
+
+        async function cleanup(position) {
+
+            let gridX = Math.floor(position.x / gridSize)
+            let gridZ = Math.floor(position.z / gridSize)
+
+            let CLEANUP_DIST = 8
+
+            //cleanup floor tiles
+            let f0=Object.keys(dictionary).length
+            let obj0=Object.keys(allMeshes).length
+            let fCount=0
+            let objCount=0
+            for (var _tile in floorTiles) {
+                let tile = floorTiles[tile]
+
+                let x = tile.userData["xz"][0]
+                let z = tile.userData["xz"][1]
+
+                let gridKey = `${x}_${z}`
+
+                let d = Math.pow(Math.pow(gridX - x, 2) + Math.pow(gridZ - z, 2), 0.5)
+
+                if (d > CLEANUP_DIST) {
+                    delete floorTiles[_tile]
+                    scene.remove(tile)
+                    ftCount+=1
+                }
+            }
+
+            //cleanup meshes
+            let newMeshes = []
+            for (var _mesh in allMeshes) {
+                let mesh = allMeshes[_mesh]
+                let thisX = Math.floor(position.x / gridSize)
+                let thisZ = Math.floor(position.z / gridSize)
+
+                let d = Math.pow(Math.pow(gridX - thisX, 2) + Math.pow(gridZ - thisZ, 2), 0.5)
+
+                if (d > CLEANUP_DIST) {
+                    //remove from scene
+                    scene.remove(mesh)
+
+                    //remove from saveData
+                    let key = objectToDelete.userData["key"]
+                    console.log("deleting object with key", key)
+                    let t = 0
+                    if (key) {
+                        //find in saveData.objects
+                        for (var j in saveData.objects) {
+                            if (saveData.objects[j]["key"] == key) {
+                                console.log("removing object ", j, "with key", key, "from saveData")
+                                saveData.objects.splice(j, 1)
+                                t = 1
+                                break
+                            }
+                        }
+                        if (t == 0) {
+                            console.log("key", key, "not found!")
+                        } else {
+                            console.log("saving")
+                            if (savePath != "NONE") {
+                                doSave()
+                            }
+                        }
+
+
+                    } else {
+                        console.log("this should never happen!")
+                    }
+                    objCount+=1
+                }else{newMeshes.push(mesh)}
+            }
+
+            allMeshes=newMeshes//I'm slightly worried this is going to introduce some kind of race condition
+
+            let f1=Object.keys(dictionary).length
+            let obj1=Object.keys(allMeshes).length
+
+            console.log("finished cleanup",f0,fCount,f1,obj0,objCount,obj1)
+            
+        }
+
 
         function getFloorHeight(x, z) {
 
@@ -1457,7 +1543,7 @@
             let nextCubeRotation_xyz = [objectToRecreate.rotation.x, objectToRecreate.rotation.y, objectToRecreate.rotation.z]
             let objectType = objectToRecreate.userData["objectType"]
 
-            nextCubePosition.y -= objectToRecreate.userData["meshSize"].y/2
+            nextCubePosition.y -= objectToRecreate.userData["meshSize"].y / 2
 
 
 
@@ -1581,7 +1667,7 @@
 
             //offset postion
             //let offsetAmt = 1
-            let offsetAmt=objectToRecreate.userData["meshSize"].x
+            let offsetAmt = objectToRecreate.userData["meshSize"].x
 
             if (thisAspectRatio == "landscape") {
                 offsetAmt = 1.5
@@ -1594,14 +1680,14 @@
             nextCubePosition.z += offsetZ
 
             //move in local z
-            let offsetX2 = Math.sin(euler.y) * objectToRecreate.userData["meshSize"].z/2
-            let offsetZ2 = Math.cos(euler.y) * objectToRecreate.userData["meshSize"].z/2
+            let offsetX2 = Math.sin(euler.y) * objectToRecreate.userData["meshSize"].z / 2
+            let offsetZ2 = Math.cos(euler.y) * objectToRecreate.userData["meshSize"].z / 2
 
             nextCubePosition.x += offsetX2
             nextCubePosition.z += offsetZ2
 
 
-            nextCubePosition.y -= objectToRecreate.userData["meshSize"].y/2
+            nextCubePosition.y -= objectToRecreate.userData["meshSize"].y / 2
 
 
             let placeholder = addPlaceholder(nextCubePosition, nextCubeRotation, "#aaaaaa", { 'r': 1, "g": 0, "b": 0 }, 30);
@@ -1878,6 +1964,7 @@
         async function updateWorld(position) {
             await generateFloorTiles(position)
             await loadGridObjects(position)
+            cleanup(position)
             //await generateBackgroundObjects(position)
         }
 
@@ -2013,7 +2100,7 @@
         }
 
 
-        function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz, objectType, userCreated) {
+        function add3dImage(data, position, rotation, saveThisObject, thisAspectRatio, key, rotation_xyz, _objectType, userCreated) {
             let imgPath = "../samples/" + data["img"]
             let dPath = "../samples/" + data["depth"]
 
@@ -2031,6 +2118,10 @@
 
             let displacementBias = -0.5
             let displacementScale = 1.0
+
+            //read objectType from response
+            let objectType=data["objectType"]
+
 
 
 
@@ -2120,22 +2211,22 @@
             //get size and use to update position
             const box = new THREE.Box3();
             mesh.geometry.computeBoundingBox();
-            box.copy( mesh.geometry.boundingBox ).applyMatrix4( mesh.matrixWorld );
-            let meshSize= new THREE.Vector3()
+            box.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+            let meshSize = new THREE.Vector3()
             box.getSize(meshSize)
 
-            let yOffset=meshSize.y/2
-            let xOffset= -Math.sin(rotation)*meshSize.z/2
-            let zOffset= -Math.cos(rotation)*meshSize.z/2
+            let yOffset = meshSize.y / 2
+            let xOffset = -Math.sin(rotation) * meshSize.z / 2
+            let zOffset = -Math.cos(rotation) * meshSize.z / 2
 
 
 
             //mesh.rotation.y = rotation - Math.PI / 2;
             mesh.rotation.y = rotation;
             mesh.position.copy(position);
-            mesh.position.x+=xOffset
-            mesh.position.y+=yOffset
-            mesh.position.z+=zOffset
+            mesh.position.x += xOffset
+            mesh.position.y += yOffset
+            mesh.position.z += zOffset
 
             if (rotation_xyz) {
                 mesh.rotation.x = rotation_xyz[0];
@@ -2179,7 +2270,7 @@
                     "disp": data["depth"],
                     "edge": data["edge"],
                     "bg": data["bg"],
-                    "xyz": [mesh.position.x - xOffset, mesh.position.y -yOffset, mesh.position.z - zOffset],
+                    "xyz": [mesh.position.x - xOffset, mesh.position.y - yOffset, mesh.position.z - zOffset],
                     "rotation": mesh.rotation.y,
                     "rotation_xyz": [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
                     "aspect_ratio": thisAspectRatio,

@@ -62,7 +62,8 @@ def setup(
     gridSize=8,
     terrainScale=0.1,
     terrainScaleY=5,
-    modelSize768=False
+    modelSize768=False,
+    onlyOneObjectType=False
 ):
     global base_count
     #global latest_object
@@ -415,24 +416,32 @@ def setup(
             if lock.locked() or jobs_count > 0:
                 time.sleep(waitingAmount)
             else:
-                # find the object type with the least generated_images
-                objectType = None
-                objectCount = 999
-                for thisObjectType in OBJECT_TYPES.values():
-                    #thisObjectCount = len(generated_images[thisObjectType])
+
+                if onlyOneObjectType:
+                    objectType = "Object"
                     thisObjectCount = table.count(
-                        objectType=thisObjectType, used=False)
-                    if thisObjectCount < objectCount:
-                        objectCount = thisObjectCount
-                        objectType = thisObjectType
+                        objectType=objectType, used=False)
+
+                    aspect_ratio = random.choice(
+                        ["square", "portrait", "landscape"])
+
+                else:
+                    # find the object type with the least generated_images
+                    objectType = None
+                    objectCount = 999
+                    for thisObjectType in OBJECT_TYPES.values():
+                        #thisObjectCount = len(generated_images[thisObjectType])
+                        thisObjectCount = table.count(
+                            objectType=thisObjectType, used=False)
+                        if thisObjectCount < objectCount:
+                            objectCount = thisObjectCount
+                            objectType = thisObjectType
+
+                    aspect_ratio = "square"
 
                 if thisObjectCount < MAX_GEN_IMAGES:
                     print("generating object in background", objectType)
                     prompt = generatePrompt(lock, objectType)
-                    # aspect_ratio = random.choice(
-                    #    ["square", "portrait", "landscape"])
-
-                    aspect_ratio = "square"
                     if objectType == "NPC":
                         aspect_ratio = "portrait"
 
@@ -565,8 +574,12 @@ window.onload=function(){
         width = request.values.get("width", default=512, type=int)
         height = request.values.get("height", default=512, type=int)
         objectType = request.values.get("objectType", default="object")
+
+        if onlyOneObjectType:
+            objectType = "Object"
+
         seed = request.values.get("seed", default=-1, type=int)
-        print("img properties", width, height, seed)
+        print("img properties", width, height, seed, objectType)
         # with open("tmp.webm",'wb') as f:
         # f.write(audio_input)
 
@@ -611,7 +624,11 @@ window.onload=function(){
         seed = request.values.get("seed", default=-1, type=int)
         objectType = request.values.get(
             "objectType", default="Object", type=str)
-        print("img properties", width, height, seed)
+        
+        if onlyOneObjectType:
+            objectType = "Object"
+        
+        print("img properties", width, height, seed,objectType)
 
         if seed == -1:
             seed = random.randint(0, 10**9)
@@ -761,7 +778,10 @@ window.onload=function(){
 
         objectType = bgObject["objectType"]
 
-        rotationY=random.random()*6.28
+        if onlyOneObjectType:
+            objectType = "Object"
+
+        rotationY = random.random()*6.28
 
         # convert into format useful for saving
         saveData = {
@@ -799,7 +819,7 @@ window.onload=function(){
             objectType=saveData["objectType"],
             name=saveData["name"],
             userCreated=saveData["userCreated"],
-            used=True,#gah!  This needs to be true so we don't keep re-using same object!
+            used=True,  # gah!  This needs to be true so we don't keep re-using same object!
         )
 
         table.insert(
@@ -819,39 +839,32 @@ window.onload=function(){
     def getBackgroundObject(x, z):
 
         y = heightAtCoord(x, z)
-        
 
         #print("\n\nwha", x, z, "->", y , "\n\n")
 
-        biomeType=getBiomeType(x,y,z)
+        if onlyOneObjectType:
+            objectType = "Object"
 
-        if biomeType=="ocean":
-            objectType = "Fish"
-        elif biomeType=="city":
-            objectType = random.choice([
-                "Object",
-                "NPC",
-                "Building",
+        else:
+
+            biomeType = getBiomeType(x, y, z)
+
+            if biomeType == "ocean":
+                objectType = "Fish"
+            elif biomeType == "city":
+                objectType = random.choice([
+                    "Object",
+                    "NPC",
+                    "Building",
                 ])
-        else:
-            objectType = random.choice([
-                "Plant",
-                "Tree",
-                "Mob",
-                "Boss",
-            ])
+            else:
+                objectType = random.choice([
+                    "Plant",
+                    "Tree",
+                    "Mob",
+                    "Boss",
+                ])
 
-        '''
-        
-        if len(generated_images[objectType]) > 0:
-            result = generated_images[objectType].pop()
-            used_images[objectType].append(result)
-        elif len(used_images[objectType]) > 0:
-            result = random.choice(used_images[objectType])
-        else:
-            result = latest_object
-
-        '''
         table = db['savedObjects']
         # foundObject=table.find_one(objectType=objectType,used=False,order_by="RANDOM()")
         statement = """
@@ -941,31 +954,26 @@ window.onload=function(){
         a = (a1+0.5*a2)/1.5
         return a[0][0]
 
-    def getBiomeType(x,y,z):
+    def getBiomeType(x, y, z):
         h01 = (y + 1) / 2  # convert from -1,1 to 0,1
         if h01 < seaLevel:
             return "ocean"
 
-        cityScale=20
-        cityRadius=0.25
-        
-        xc=x/cityScale/terrainScale #want this in grid units, not terrain units
-        zc=z/cityScale/terrainScale #want this in grid units, not terrain units
-        xc0=round(xc)
-        zc0=round(zc)
-        d=((xc-xc0)**2+(zc-zc0)**2)**0.5
+        cityScale = 20
+        cityRadius = 0.25
 
-        print("\n\n biome",xc,zc,xc0,zc0,d,"\n\n")
+        xc = x/cityScale/terrainScale  # want this in grid units, not terrain units
+        zc = z/cityScale/terrainScale  # want this in grid units, not terrain units
+        xc0 = round(xc)
+        zc0 = round(zc)
+        d = ((xc-xc0)**2+(zc-zc0)**2)**0.5
 
-        if d<cityRadius:
+        print("\n\n biome", xc, zc, xc0, zc0, d, "\n\n")
+
+        if d < cityRadius:
             return "city"
 
         return "forest"
-
-
-
-
-        
 
     return app
 
@@ -989,6 +997,7 @@ if __name__ == '__main__':
     parser.add_argument('--defaultPrompts', default="prompts.yaml")
     parser.add_argument('--bgThreshold', type=float, default=64)
     parser.add_argument('--modelSize768', action='store_true')
+    parser.add_argument('--onlyOneObjectType', action='store_true')
     args = parser.parse_args()
     print("args", args)
     app = setup(
@@ -1006,6 +1015,7 @@ if __name__ == '__main__':
         MAX_GEN_IMAGES=args.maxGenImages,
         negative_prompt=args.negativePrompt,
         defaultPrompts=args.defaultPrompts,
-        modelSize768=args.modelSize768
+        modelSize768=args.modelSize768,
+        onlyOneObjectType=args.onlyOneObjectType
     )
     app.run()
