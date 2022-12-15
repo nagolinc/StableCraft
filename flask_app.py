@@ -253,7 +253,7 @@ def setup(
         if 'savedObjects' in db.tables:
             statement = """
             SELECT * FROM savedObjects
-            WHERE objectType='{objectType}' AND userCreated=TRUE
+            WHERE objectType='{objectType}' AND userCreated=1
             ORDER BY RANDOM()
             LIMIT 5;        
             """.format(objectType=objectType)
@@ -869,7 +869,7 @@ window.onload=function(){
         # foundObject=table.find_one(objectType=objectType,used=False,order_by="RANDOM()")
         statement = """
         SELECT DISTINCT (name) FROM savedObjects
-        WHERE objectType='{objectType}' AND used=FALSE
+        WHERE objectType='{objectType}' AND used=0
         ORDER BY RANDOM()        
         LIMIT 1;        
         """.format(objectType=objectType)

@@ -1380,12 +1380,12 @@
             let CLEANUP_DIST = 8
 
             //cleanup floor tiles
-            let f0=Object.keys(dictionary).length
+            let f0=Object.keys(floorTiles).length
             let obj0=Object.keys(allMeshes).length
             let fCount=0
             let objCount=0
             for (var _tile in floorTiles) {
-                let tile = floorTiles[tile]
+                let tile = floorTiles[_tile]
 
                 let x = tile.userData["xz"][0]
                 let z = tile.userData["xz"][1]
@@ -1397,7 +1397,7 @@
                 if (d > CLEANUP_DIST) {
                     delete floorTiles[_tile]
                     scene.remove(tile)
-                    ftCount+=1
+                    fCount+=1
                 }
             }
 
@@ -1405,8 +1405,8 @@
             let newMeshes = []
             for (var _mesh in allMeshes) {
                 let mesh = allMeshes[_mesh]
-                let thisX = Math.floor(position.x / gridSize)
-                let thisZ = Math.floor(position.z / gridSize)
+                let thisX = Math.floor(mesh.position.x / gridSize)
+                let thisZ = Math.floor(mesh.position.z / gridSize)
 
                 let d = Math.pow(Math.pow(gridX - thisX, 2) + Math.pow(gridZ - thisZ, 2), 0.5)
 
@@ -1415,8 +1415,8 @@
                     scene.remove(mesh)
 
                     //remove from saveData
-                    let key = objectToDelete.userData["key"]
-                    console.log("deleting object with key", key)
+                    let key = mesh.userData["key"]
+                    console.log("cleaning up object with key", key)
                     let t = 0
                     if (key) {
                         //find in saveData.objects
@@ -1441,16 +1441,46 @@
                     } else {
                         console.log("this should never happen!")
                     }
+
+
+                    //and set gridLoaded to false so that we can
+                    // reload this object when we go back
+                    let objGridKey = `${thisX}_${thisZ}`
+                    gridLoaded[objGridKey]=false
+
+
+                    t = 0
+                    if (objGridKey in gridToMeshes) {
+                        for (var _gridObject in gridToMeshes[objGridKey]) {
+                            let gridObject= gridToMeshes[objGridKey][_gridObject]
+                            if (gridObject.userData["key"] == key) {
+                                console.log("cleaned up grid object",objGridKey,key)
+                                delete gridToMeshes[objGridKey][_gridObject]
+                                t = 1
+                                break
+                            }
+                        }
+                    }
+
+                    if(t==0){
+                        console.log("this should never happen, failed to remove from gridToMeshes!")
+                    }
+
+
+                    
+
+
+
                     objCount+=1
                 }else{newMeshes.push(mesh)}
             }
 
             allMeshes=newMeshes//I'm slightly worried this is going to introduce some kind of race condition
 
-            let f1=Object.keys(dictionary).length
+            let f1=Object.keys(floorTiles).length
             let obj1=Object.keys(allMeshes).length
 
-            console.log("finished cleanup",f0,fCount,f1,obj0,objCount,obj1)
+            console.log("finished cleanup, floor:",f0,"-",fCount,"=",f1,"obj:",obj0,"-",objCount,"=",obj1)
             
         }
 
@@ -2020,6 +2050,10 @@
                 let t = 0
                 if (gridKey in gridToMeshes) {
                     for (var gridObject of gridToMeshes[gridKey]) {
+                        if(!gridObject){
+                            console.log("race condition?")
+                            continue
+                        }
                         if (gridObject.userData["key"] == object["key"]) {
                             t = 1
                             break
