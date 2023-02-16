@@ -276,6 +276,9 @@ def setup(
         #    prompts = random.sample(
         #        default_prompts[objectType]+all_prompts[objectType], k)
 
+        if objectType=="AUTO":
+            objectType="Object"
+
         if len(gotPrompts) >= k:
             prompts = gotPrompts
         else:
@@ -619,7 +622,8 @@ window.onload=function(){
 
 
         if objectType=="AUTO":
-            objectType=guessObjectType(prompt)
+            #objectType=guessObjectType(prompt)
+            objectType="Object"
 
         if seed == -1:
             seed = random.randint(0, 10**9)
@@ -1048,7 +1052,7 @@ if __name__ == '__main__':
     parser.add_argument('--do_img2img', action='store_true')
     parser.add_argument('--img2img_size', type=float, default=1.5)
     parser.add_argument('--num_inference_steps', type=int, default=20)
-    parser.add_argument('--suffix', type=str, default="4k dslr")
+    parser.add_argument('--suffix', type=str, default="high quality, photorealistic")
     parser.add_argument('--edgeThreshold', type=float, default=2)
     parser.add_argument('--edgeWidth', type=int, default=3)
     parser.add_argument('--blurRadius', type=float, default=4)
