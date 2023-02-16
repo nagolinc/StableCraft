@@ -120,11 +120,10 @@
             3: "recreate",
             4: "delete",
             5: "aspect ratio",
-            6: "audio",
-            7: "resize",
-            8: "move",
-            9: "object type",
-
+            6: "object type",
+            7: "audio",
+            8: "resize",
+            9: "move",
         }
         let ACTION_MODE_TO_INDEX = {}
         for (var i in ACTION_MODES) {
@@ -136,18 +135,19 @@
 
         //object type
         let OBJECT_TYPES = {
-            0: "Object",
-            1: "NPC",
-            2: "Building",
-            3: "Plant",
-            4: "Tree",
-            5: "Mob",
-            6: "Boss",
-            7: "Fish",
+            0: "AUTO",
+            1: "Object",
+            2: "NPC",
+            3: "Building",
+            4: "Plant",
+            5: "Tree",
+            6: "Mob",
+            7: "Boss",
+            8: "Fish",
         }
 
-        let CURRENT_OBJECT_TYPE = 1
-        let NUM_OBJECT_TYPES = 8
+        let CURRENT_OBJECT_TYPE = 0
+        let NUM_OBJECT_TYPES = 9
         let OBJECT_TYPE = OBJECT_TYPES[CURRENT_OBJECT_TYPE]//"Object"
 
         //let near = 5

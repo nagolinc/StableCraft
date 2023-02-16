@@ -38,6 +38,9 @@ import threading
 import time
 import yaml
 
+
+from riffusion import get_music
+
 MIN_PROMPT_LENGTH = 12
 jobs_count = 0
 
@@ -45,7 +48,7 @@ jobs_count = 0
 def setup(
     diffusion_model="CompVis/stable-diffusion-v1-4",
     num_inference_steps=30,
-    no_fp16=False,
+    fp16=False,
     doImg2Img=True,
     img2imgSize=1024,
     edgeThreshold=2,
@@ -66,6 +69,7 @@ def setup(
     onlyOneObjectType=False
 ):
     global base_count
+    global pipe
     #global latest_object
     # some constants that matter
     sample_path = "./static/samples"
@@ -118,7 +122,7 @@ def setup(
     def safety_checker(images, clip_input):
         return images, False
 
-    if no_fp16:
+    if fp16==False:
         # make sure you're logged in with `huggingface-cli login`
         pipe = StableDiffusionPipeline.from_pretrained(
             diffusion_model,
@@ -189,6 +193,7 @@ def setup(
 
     def doGen(prompt, seed, height=512, width=512):
         global base_count
+        global pipe
         # move text model to cpu for now
         text_generator.model = text_generator.model.cpu()
         whisper_model.cpu()
@@ -200,6 +205,9 @@ def setup(
 
         # seed
         generator = torch.Generator("cuda").manual_seed(seed)
+
+
+        pipe = pipe.to("cuda")
 
         with autocast("cuda"):
             image = pipe(
@@ -408,12 +416,17 @@ def setup(
         lock.release()
         return prompt
 
+    def guessObjectType(prompt):
+        #todo: implement
+        return "Object"
+
     def generateBackgroundObjects(lock, waitingAmount=3):
         #global latest_object
         table = db['savedObjects']
 
         while True:
             if lock.locked() or jobs_count > 0:
+                print("waiting, jobs count",jobs_count)
                 time.sleep(waitingAmount)
             else:
 
@@ -531,6 +544,7 @@ def setup(
 
                     #latest_object = bgObject
                 else:
+                    print("waiting, object count",thisObjectCount)
                     time.sleep(waitingAmount)
 
     # flask server
@@ -603,6 +617,10 @@ window.onload=function(){
             # all_prompts[objectType].append(prompt)
             pass
 
+
+        if objectType=="AUTO":
+            objectType=guessObjectType(prompt)
+
         if seed == -1:
             seed = random.randint(0, 10**9)
 
@@ -624,6 +642,9 @@ window.onload=function(){
         seed = request.values.get("seed", default=-1, type=int)
         objectType = request.values.get(
             "objectType", default="Object", type=str)
+
+        if objectType=="AUTO":
+            objectType=guessObjectType(prompt)
         
         if onlyOneObjectType:
             objectType = "Object"
@@ -641,11 +662,44 @@ window.onload=function(){
 
     @app.route("/genAudio", methods=['POST'])
     def genAudio():
+
+        global jobs_count
+        global pipe
+        jobs_count += 1
+        lock.acquire()
+
+        #move stuff to cpu
+        text_generator.model = text_generator.model.cpu()
+        whisper_model.cpu()
+        pipe.to("cpu")
+        gc.collect()
+        
+
         prompt = request.values.get('prompt')
-        duration = request.values.get('duration', 30, type=int)
-        url = generate_track_by_prompt(
-            prompt, duration, mubert_token, loop=False)
-        return jsonify({"url": url})
+        duration = request.values.get('duration', 8, type=int)
+        #url = generate_track_by_prompt(
+        #    prompt, duration, mubert_token, loop=False)
+        seed=random.randint(0,10**9-1)
+        h = hashlib.sha224(("%s --seed %d" % (prompt, seed)
+                            ).encode('utf-8')).hexdigest()
+        url="static/samples/{hash}.mp3".format(hash=h)
+
+        url2="../samples/{hash}.mp3".format(hash=h)
+
+        _,url=get_music(prompt,duration,mp3file_name=url)
+
+        
+        
+        
+        #move stuff back to cuda and release lock
+        text_generator.model = text_generator.model.cuda()
+        whisper_model.cuda()
+
+        jobs_count -= 1
+        lock.release()
+        
+
+        return jsonify({"url": url2})
 
     @app.route("/saveData", methods=['POST'])
     def saveData():
@@ -887,19 +941,26 @@ window.onload=function(){
             )
             print("\n\nfound object here", foundObject, "\n\n")
         else:
-            statement = """
-            SELECT DISTINCT (name) FROM savedObjects
-            WHERE objectType='{objectType}'
-            ORDER BY RANDOM()
-            LIMIT 1;        
-            """.format(objectType=objectType)
-            _found = list(db.query(statement))
+            #statement = """
+            #SELECT DISTINCT (name) FROM savedObjects
+            #WHERE objectType='{objectType}'
+            #ORDER BY RANDOM()
+            #LIMIT 1;        
+            #""".format(objectType=objectType)
+            #_found = list(db.query(statement))
+            _found=list(db["savedObjects"].find(objectType=objectType,order_by='-id'))
             if len(_found) > 0:
-                foundObject = table.find_one(
-                    name=_found[0]['name'],
-                    objectType=objectType,
-                )
-                print("\n\nfound object here2", foundObject, "\n\n")
+                #foundObject = table.find_one(
+                #    name=_found[0]['name'],
+                #    objectType=objectType,
+                #)
+                #print("\n\nfound object here2", foundObject, "\n\n")
+
+                #exponential distribution with mean MAX_GEN_IMAGES
+                whichOne=min(len(_found)-1,int(np.random.exponential(scale=MAX_GEN_IMAGES)))
+                foundObject=_found[whichOne]
+
+
             else:
                 statement = """
                 SELECT DISTINCT (name) FROM savedObjects
@@ -983,7 +1044,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='launch StableCraft')
     parser.add_argument('--diffusion_model',
                         default="runwayml/stable-diffusion-v1-5")
-    parser.add_argument('--no_fp16', action='store_true')
+    parser.add_argument('--fp16', action='store_true')
     parser.add_argument('--do_img2img', action='store_true')
     parser.add_argument('--img2img_size', type=float, default=1.5)
     parser.add_argument('--num_inference_steps', type=int, default=20)
@@ -1002,7 +1063,7 @@ if __name__ == '__main__':
     print("args", args)
     app = setup(
         diffusion_model=args.diffusion_model,
-        no_fp16=args.no_fp16,
+        fp16=args.fp16,
         doImg2Img=args.do_img2img,
         num_inference_steps=args.num_inference_steps,
         edgeThreshold=args.edgeThreshold,
