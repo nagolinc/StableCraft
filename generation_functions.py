@@ -253,7 +253,7 @@ def setup(
             pipe.safety_checker = None
 
         else:
-            print("LOADING IMG2iMG MODEL")
+            print("LOADING txt2iMG MODEL (normal)")
 
             # check if vae is None
             if vaeModel is not None:
@@ -283,9 +283,12 @@ def setup(
             # pipe = pipe.to("cuda")
 
             # move pipe to CPU
-            pipe = pipe.to("cpu")
-            gc.collect()
-            torch.cuda.empty_cache()
+            if do_save_memory:
+                pipe = pipe.to("cpu")
+                gc.collect()
+                torch.cuda.empty_cache()
+            else:
+                pipe = pipe.to("cuda")
 
         if need_img2img:
 

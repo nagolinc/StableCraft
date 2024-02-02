@@ -113,6 +113,7 @@ def setup(
         need_txt2img=True,
         need_img2img=doImg2Img,
         need_music=True,
+        save_memory=args.save_memory,
     )
 
     feature_extractor = DPTFeatureExtractor.from_pretrained(
@@ -171,7 +172,7 @@ def setup(
         img.save(imgPath)
         return img, imgName
 
-    def generatePrompt(lock, objectType, k=5, max_new_tokens=200):
+    def generatePrompt(lock, objectType, k=5):
         lock.acquire()
 
         # table = db['savedObjects']
@@ -208,7 +209,7 @@ def setup(
         textInput = "\ndescription:\n".join([s.strip() for s in prompts])
         # output = text_generator(textInput, max_new_tokens=max_new_tokens, return_full_text=False)[
         #    0]['generated_text']
-        response = generation_functions.llm(textInput, max_tokens=max_new_tokens)
+        response = generation_functions.llm(textInput, max_tokens=args.max_new_tokens)
         output = response["choices"][0]["text"]
 
         # print("got output", output)
@@ -616,17 +617,17 @@ window.onload=function(){
 
         prompt = request.values.get("prompt")
         duration = request.values.get("duration", 8, type=int)
-        # url = generate_track_by_prompt(
-        #    prompt, duration, mubert_token, loop=False)
-        seed = random.randint(0, 10**9 - 1)
-        h = hashlib.sha224(
-            ("%s --seed %d" % (prompt, seed)).encode("utf-8")
-        ).hexdigest()
-        url = "static/samples/{hash}.mp3".format(hash=h)
 
-        url2 = "../samples/{hash}.mp3".format(hash=h)
-
-        _, url = generation_functions.generate_music(prompt, duration)
+        url = generation_functions.generate_music(prompt, duration)
+        
+        
+        print("/n/n/n---huh\n", url, "\n\n\n")
+        
+        #remove /static/samples/ from url
+        url = url.split("/")[-1]
+        url= "../"+url
+        
+        print("/n/n/n---huh\n", url, "\n\n\n")
 
         # move stuff back to cuda and release lock
         whisper_model.cuda()
@@ -634,7 +635,7 @@ window.onload=function(){
         jobs_count -= 1
         lock.release()
 
-        return jsonify({"url": url2})
+        return jsonify({"url": url})
 
     @app.route("/saveData", methods=["POST"])
     def saveData():
@@ -1002,6 +1003,8 @@ if __name__ == "__main__":
     parser.add_argument("--defaultPrompts", default="prompts.yaml")
     parser.add_argument("--bgThreshold", type=float, default=64)
     parser.add_argument("--onlyOneObjectType", action="store_true")
+    
+    
 
     # image sizes [1024,1024,2048,2048]
     parser.add_argument(
@@ -1017,6 +1020,12 @@ if __name__ == "__main__":
 
     # cfg scale
     parser.add_argument("--cfg_scale", type=float, default=7.0, help="cfg scale")
+    
+    #--doNotSaveMemory save_memory store false
+    parser.add_argument("--doNotSaveMemory", dest="save_memory", action="store_false")
+    
+    #--max_new_tokens max_new_tokens for prompt default = 20
+    parser.add_argument("--max_new_tokens", type=int, default=20, help="max_new_tokens for prompt")
 
     args = parser.parse_args()
     print("args", args)
