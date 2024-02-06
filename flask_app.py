@@ -49,6 +49,10 @@ import generation_functions
 MIN_PROMPT_LENGTH = 12
 jobs_count = 0
 
+generateBackgroundObjects = lambda: None
+
+lock=None
+
 
 def setup(
     diffusion_model="CompVis/stable-diffusion-v1-4",
@@ -114,6 +118,7 @@ def setup(
         need_img2img=doImg2Img,
         need_music=True,
         save_memory=args.save_memory,
+        need_rembg=True,
     )
 
     feature_extractor = DPTFeatureExtractor.from_pretrained(
@@ -310,8 +315,11 @@ def setup(
         # background = None  # todo:fixme
         bgName = "%s_bg.png" % h
         bgPath = os.path.join(sample_path, bgName)
-        background = threshold(depth_map, thresh=bg_threshold)
-        background = ImageChops.multiply(background, edge_mask)
+        #background = threshold(depth_map, thresh=bg_threshold)
+        
+        masked_image, background = generation_functions.remove_background(img)
+        
+        #background = ImageChops.multiply(background, edge_mask)
         # background=remove_background(img) #just not reliable enough!
         background.save(bgPath)
 
@@ -350,6 +358,8 @@ def setup(
     def guessObjectType(prompt):
         # todo: implement
         return "Object"
+    
+    global generateBackgroundObjects
 
     def generateBackgroundObjects(lock, waitingAmount=3):
         # global latest_object
@@ -360,6 +370,7 @@ def setup(
                 print("waiting, jobs count", jobs_count)
                 time.sleep(waitingAmount)
             else:
+                print("making background object", jobs_count)
                 if onlyOneObjectType:
                     objectType = "Object"
                     thisObjectCount = table.count(objectType=objectType, used=False)
@@ -495,8 +506,8 @@ def setup(
 
     # flask server
     app = Flask(__name__)
-    run_with_ngrok(app, auth_token=os.environ["NGROK_TOKEN"])
-
+    
+    
     @app.route("/")
     def hello_world():
         return """
@@ -518,11 +529,11 @@ window.onload=function(){
 
     # loop = asyncio.get_event_loop()
 
+    global lock
     lock = threading.Lock()
 
-    backgroundThread = threading.Thread(target=generateBackgroundObjects, args=[lock])
-    backgroundThread.start()
 
+    
     @app.route("/putAudio", methods=["POST"])
     def putAudio():
         global jobs_count
@@ -986,11 +997,11 @@ window.onload=function(){
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="launch StableCraft")
-    parser.add_argument("--diffusion_model", default="runwayml/stable-diffusion-v1-5")
+    parser.add_argument("--diffusion_model", default="turbo")
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--do_img2img", action="store_true")
     parser.add_argument("--num_inference_steps", type=int, default=20)
-    parser.add_argument("--suffix", type=str, default="high quality, photorealistic")
+    parser.add_argument("--suffix", type=str, default="solid white background, high quality, photorealistic")
     parser.add_argument("--edgeThreshold", type=float, default=2)
     parser.add_argument("--edgeWidth", type=int, default=3)
     parser.add_argument("--blurRadius", type=float, default=4)
@@ -1026,8 +1037,14 @@ if __name__ == "__main__":
     
     #--max_new_tokens max_new_tokens for prompt default = 20
     parser.add_argument("--max_new_tokens", type=int, default=20, help="max_new_tokens for prompt")
+    
+    #ngrok
+    parser.add_argument("--ngrok", action="store_true")
+    
 
     args = parser.parse_args()
+    
+    
     print("args", args)
     app = setup(
         diffusion_model=args.diffusion_model,
@@ -1045,4 +1062,17 @@ if __name__ == "__main__":
         defaultPrompts=args.defaultPrompts,
         onlyOneObjectType=args.onlyOneObjectType,
     )
-    app.run()
+    
+    
+    
+    
+    print("starting background thread")
+    backgroundThread = threading.Thread(target=generateBackgroundObjects, args=[lock])
+    backgroundThread.start()
+
+    
+    
+    if args.ngrok:    
+        run_with_ngrok(app, auth_token=os.environ["NGROK_TOKEN"])
+    else:
+        app.run(debug=True, use_reloader=False)

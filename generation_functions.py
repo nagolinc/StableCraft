@@ -22,6 +22,17 @@ import os
 import hashlib
 from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler, StableDiffusionImg2ImgPipeline, DiffusionPipeline, AutoencoderKL, StableDiffusionXLImg2ImgPipeline, StableDiffusionXLPipeline, AutoencoderTiny, DDIMInverseScheduler, DDIMScheduler
 from diffusers import LCMScheduler, AutoPipelineForText2Image, AutoencoderTiny
+
+
+from briarmbg import BriaRMBG
+from huggingface_hub import hf_hub_download
+    
+
+import torch.nn.functional as F
+from torchvision.transforms.functional import normalize
+import numpy as np
+
+
 import sys
 sys.path.append("D:\\img\\IP-Adapter\\")
 
@@ -70,6 +81,8 @@ do_needDeciDiffusion = False
 
 manget_audio_model = None
 
+rembg = None
+
 
 def setup(
     _image_prompt_file="image_prompts.txt",
@@ -101,7 +114,8 @@ def setup(
     need_video=False,
     need_llm=False,
     need_deciDiffusion=False,
-    need_textModel=False
+    need_textModel=False,
+    need_rembg=False,
 
 ):
     
@@ -475,6 +489,66 @@ def setup(
             deciDiffusion = deciDiffusion.to('cpu')
         else:
             deciDiffusion = deciDiffusion.to('cuda')
+            
+            
+    global rembg
+    if need_rembg:
+        print("LOADING REMBG")
+        model_path = hf_hub_download("briaai/RMBG-1.4", 'model.pth')
+        rembg = BriaRMBG()
+        rembg.load_state_dict(torch.load(model_path, map_location='cuda'))
+        rembg.to('cuda')
+        rembg.eval()    
+        
+        
+def remove_background(image):
+    
+
+
+    def preprocess_image(im: np.ndarray, model_input_size: list) -> torch.Tensor:
+        if len(im.shape) < 3:
+            im = im[:, :, np.newaxis]
+        # orig_im_size=im.shape[0:2]
+        im_tensor = torch.tensor(im, dtype=torch.float32).permute(2,0,1)
+        im_tensor = F.interpolate(torch.unsqueeze(im_tensor,0), size=model_input_size, mode='bilinear').type(torch.uint8)
+        image = torch.divide(im_tensor,255.0)
+        image = normalize(image,[0.5,0.5,0.5],[1.0,1.0,1.0])
+        return image
+
+
+    def postprocess_image(result: torch.Tensor, im_size: list)-> np.ndarray:
+        result = torch.squeeze(F.interpolate(result, size=im_size, mode='bilinear') ,0)
+        ma = torch.max(result)
+        mi = torch.min(result)
+        result = (result-mi)/(ma-mi)
+        im_array = (result*255).permute(1,2,0).cpu().data.numpy().astype(np.uint8)
+        im_array = np.squeeze(im_array)
+        return im_array
+        
+        
+    orig_image = image
+    # prepare input
+    #model_input_size = [1024,1024]
+    model_input_size = [image.width,image.height]
+    orig_im = np.array(image)
+    orig_im_size = orig_im.shape[0:2]
+    image = preprocess_image(orig_im, model_input_size).to('cuda')
+
+    # inference 
+    result=rembg(image)
+
+    # post process
+    result_image = postprocess_image(result[0][0], orig_im_size)
+
+    # save result
+    pil_im = Image.fromarray(result_image)
+    no_bg_image = Image.new("RGBA", pil_im.size, (0,0,0,0))
+    
+    no_bg_image.paste(orig_image, mask=pil_im)
+    
+    return no_bg_image, pil_im
+    
+        
 
 
 def generate_music(description, duration=8, save_dir="./static/samples"):
